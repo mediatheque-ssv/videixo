@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Videixo</title>
+<meta name="description" content="Assemblez les vidéos d’un évènement en une story Instagram dynamique, directement dans le navigateur.">
+<style>
+/* Table de montage de la médiathèque : réglages numérotés à gauche, écran vertical à droite.
+   Couleurs reprises de la charte de Servon-sur-Vilaine : pétrole et anis, comme les rubans du cartouche. */
+@font-face { font-family: "Literata"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/literata-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Literata"; font-style: italic; font-weight: 600; font-display: swap; src: url("fonts/literata-latin-600-italic.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("fonts/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Anton"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/anton-latin-400-normal.woff2") format("woff2"); }
+/* Charte : Plover Light si elle est installée sur l’ordinateur ou déposée dans fonts/plover-light.woff2, sinon Advent Pro qui s’en approche */
+@font-face { font-family: "Titre charte"; font-style: normal; font-weight: 400; font-display: swap; src: local("Plover Light"), local("PloverLight"), local("Plover-Light"), url("fonts/plover-light.woff2") format("woff2"), url("fonts/advent-pro-latin-400-normal.woff2") format("woff2"); }
+/* Charte : Calibri si elle est installée, sinon Carlito, son équivalent libre aux mêmes dimensions */
+@font-face { font-family: "Texte charte"; font-style: normal; font-weight: 400; font-display: swap; src: local("Calibri"), url("fonts/carlito-latin-400-normal.woff2") format("woff2"); }
+
+:root {
+  --paper: #EEF2F2;      /* fond, gris légèrement bleu-vert */
+  --sheet: #FFFFFF;      /* champs et fiches */
+  --ink: #231F20;        /* texte, l’anthracite du logo */
+  --ink-soft: #56625F;   /* texte secondaire */
+  --line: #CFD9D9;       /* contours */
+  --stamp: #00727C;      /* pétrole de la charte, assombri pour la lisibilité */
+  --stamp-ink: #FFFFFF;  /* texte posé sur le pétrole */
+  --stamp-tint: #DAEFF1; /* turquoise clair de la charte */
+  --lime: #A9BF16;       /* anis de la charte, assombri pour rester visible sur fond clair */
+  --danger: #B3261E;
+  --screen: #000000;
+  --font-display: "Literata", Georgia, "Times New Roman", serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #131A1B; --sheet: #1B2526; --ink: #E8EFEF; --ink-soft: #9DB0B1; --line: #2D3B3D;
+    --stamp: #4FC2CC; --stamp-ink: #0F1617; --stamp-tint: #17383C; --lime: #CFE43E; --danger: #FF8C82; --screen: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #131A1B; --sheet: #1B2526; --ink: #E8EFEF; --ink-soft: #9DB0B1; --line: #2D3B3D;
+  --stamp: #4FC2CC; --stamp-ink: #0F1617; --stamp-tint: #17383C; --lime: #CFE43E; --danger: #FF8C82; --screen: #000000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding-inline: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.5 var(--font-body);
+}
+img, canvas, video { max-width: 100%; }
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--stamp); outline-offset: 2px; }
+
+/* ---------- En-tête ---------- */
+.top {
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-block: 32px 4px;
+}
+.top h1 {
+  margin: 0;
+  font: 600 clamp(2rem, 4.5vw, 2.75rem)/1.05 var(--font-display);
+  letter-spacing: -0.01em;
+}
+.top p { margin: 8px 0 0; color: var(--ink-soft); max-width: 60ch; }
+
+/* ---------- Mise en page ---------- */
+.layout {
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-block: 24px 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 48px;
+  align-items: start;
+}
+.controls { display: grid; gap: 44px; min-width: 0; }
+@media (max-width: 920px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+}
+
+/* ---------- Étapes ---------- */
+.step { display: grid; gap: 18px; min-width: 0; }
+.step > h2 {
+  display: flex; align-items: center; gap: 14px;
+  margin: 0;
+  font: 600 1.5rem/1.2 var(--font-display);
+}
+.stamp-num {
+  display: inline-grid; place-items: center;
+  width: 36px; height: 36px; flex: none;
+  border: 2px solid var(--stamp);
+  outline: 2px solid var(--lime); outline-offset: 2px;
+  border-radius: 5px;
+  color: var(--stamp);
+  font: italic 600 1.15rem/1 var(--font-display);
+  transform: rotate(-6deg);
+}
+
+/* ---------- Dépôt de fichiers ---------- */
+.drop {
+  position: relative;
+  display: grid; justify-items: center; gap: 4px;
+  padding: 30px 20px;
+  border: 2px dashed var(--line);
+  border-radius: 14px;
+  background: var(--sheet);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s;
+}
+.drop:hover, .drop.is-over { border-color: var(--stamp); background: var(--stamp-tint); }
+.drop:focus-within { outline: 3px solid var(--stamp); outline-offset: 2px; }
+.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.drop strong { font-size: 1.125rem; }
+.drop span { color: var(--ink-soft); font-size: .9375rem; }
+
+/* ---------- Liste des plans ---------- */
+.clips { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.clip {
+  display: grid;
+  grid-template-columns: auto 54px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.clip.is-error { border-color: var(--danger); }
+.clip-num {
+  min-width: 1.6em; padding-top: 2px;
+  color: var(--stamp);
+  font: italic 600 1.125rem/1.2 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.thumb {
+  width: 54px; height: 96px;
+  border-radius: 6px;
+  background: var(--screen);
+  display: block;
+}
+.clip-body { display: grid; gap: 6px; min-width: 0; }
+.clip-name { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.clip-meta { margin: 0; color: var(--ink-soft); font-size: .875rem; }
+/* Chiffres en Literata : le zéro barré d’Atkinson gêne la lecture des durées */
+.num { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; }
+.clip-extract { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; font-size: .875rem; }
+.clip-extract output { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.clip-extract input { grid-column: 1 / -1; width: 100%; accent-color: var(--stamp); margin: 2px 0; }
+.clip-status { margin: 0; font-size: .8125rem; color: var(--ink-soft); }
+.clip.is-error .clip-status { color: var(--danger); font-weight: 700; }
+.clip-actions { display: grid; gap: 4px; }
+.icon-btn {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: transparent; cursor: pointer;
+  color: var(--ink-soft);
+}
+.icon-btn:hover { color: var(--stamp); border-color: var(--stamp); }
+.icon-btn:disabled { opacity: .35; cursor: default; color: var(--ink-soft); border-color: var(--line); }
+.icon-btn svg { width: 18px; height: 18px; }
+.list-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.hint { margin: 0; color: var(--ink-soft); font-size: .9375rem; }
+
+/* ---------- Champs ---------- */
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.fields .wide { grid-column: 1 / -1; }
+@media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field > label, .group > legend { font-weight: 700; font-size: .9375rem; padding: 0; }
+.field small, .group small { color: var(--ink-soft); font-size: .8125rem; }
+input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--sheet);
+}
+input[type="text"]:focus { border-color: var(--stamp); outline: 3px solid var(--stamp-tint); outline-offset: 0; }
+input[type="text"]::placeholder { color: var(--ink-soft); opacity: .8; }
+.file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.file-row .logo-preview {
+  width: 56px; height: 56px; object-fit: contain;
+  border: 1px solid var(--line); border-radius: 8px; background: #FFFFFF;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  border: 1.5px solid var(--line); border-radius: 8px;
+  background: var(--sheet);
+  font-weight: 700; font-size: .9375rem;
+  cursor: pointer; text-decoration: none; color: var(--ink);
+}
+.btn:hover { border-color: var(--stamp); color: var(--stamp); }
+.btn-quiet { border-color: transparent; background: transparent; color: var(--ink-soft); padding-inline: 6px; }
+.file-name { color: var(--ink-soft); font-size: .9375rem; overflow-wrap: anywhere; }
+
+/* ---------- Groupes de choix ---------- */
+.group { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.choice-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.styles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .styles { grid-template-columns: minmax(0, 1fr); } }
+.style-card {
+  display: grid; gap: 2px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--sheet);
+  cursor: pointer;
+}
+.style-card b { font: 600 1.125rem/1.3 var(--font-display); }
+.style-card span { color: var(--ink-soft); font-size: .875rem; }
+.choice-input:checked + .style-card { border-color: var(--stamp); background: var(--stamp-tint); box-shadow: inset 0 0 0 1px var(--stamp); }
+.choice-input:focus-visible + .style-card,
+.choice-input:focus-visible + .seg,
+.choice-input:focus-visible + .swatch { outline: 3px solid var(--stamp); outline-offset: 2px; }
+
+.segmented { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg {
+  padding: 8px 14px;
+  border: 1.5px solid var(--line); border-radius: 999px;
+  background: var(--sheet);
+  font-weight: 700; font-size: .9375rem;
+  cursor: pointer;
+}
+.choice-input:checked + .seg { background: var(--stamp); border-color: var(--stamp); color: var(--stamp-ink); }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.swatch {
+  display: block; width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--sheet);
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+.choice-input:checked + .swatch { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--ink); }
+.custom-color { display: inline-flex; align-items: center; gap: 8px; font-size: .9375rem; color: var(--ink-soft); cursor: pointer; }
+.custom-color input { width: 40px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); cursor: pointer; }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--stamp); flex: none; }
+
+/* ---------- Écran d’aperçu ---------- */
+.screen-col {
+  position: sticky; top: 16px;
+  display: grid; gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 920px) { .screen-col { position: static; max-width: 400px; width: 100%; justify-self: center; } }
+.screen {
+  position: relative;
+  padding: 10px;
+  border-radius: 30px;
+  background: var(--screen);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.screen canvas { display: block; width: 100%; height: auto; border-radius: 20px; background: #000000; }
+.screen-note {
+  position: absolute; inset: auto 22px 22px;
+  margin: 0; padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .66); color: #FFFFFF;
+  font-size: .875rem; text-align: center;
+}
+.transport { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; }
+.play {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  border: 0; border-radius: 50%;
+  background: var(--ink); color: var(--paper);
+  cursor: pointer;
+}
+.play svg { width: 20px; height: 20px; }
+.transport input[type="range"] { width: 100%; accent-color: var(--stamp); }
+.time { font-variant-numeric: tabular-nums; font-size: .875rem; color: var(--ink-soft); white-space: nowrap; }
+.below-screen { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.stamp-box {
+  display: grid;
+  padding: 6px 14px;
+  border: 2px solid var(--stamp);
+  outline: 2px solid var(--lime); outline-offset: 2px;
+  border-radius: 4px;
+  color: var(--stamp);
+  font: italic 600 1rem/1.25 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  transform: rotate(-3deg);
+}
+.stamp-box small { font: 400 .8125rem/1.3 var(--font-body); font-style: normal; }
+.primary {
+  display: flex; justify-content: center; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 16px 20px;
+  border: 0; border-radius: 12px;
+  background: var(--stamp); color: var(--stamp-ink);
+  font: 700 1.125rem/1.2 var(--font-body);
+  cursor: pointer; text-decoration: none;
+}
+.primary:disabled { opacity: .45; cursor: default; }
+.privacy { margin: 0; font-size: .875rem; color: var(--ink-soft); }
+.warn { margin: 0; font-size: .875rem; color: var(--danger); font-weight: 700; }
+
+/* ---------- Fenêtre d’export ---------- */
+dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--sheet); color: var(--ink);
+}
+dialog::backdrop { background: rgba(10, 10, 20, .55); }
+dialog h3 { margin: 0 0 6px; font: 600 1.375rem/1.25 var(--font-display); }
+dialog p { margin: 0 0 14px; color: var(--ink-soft); }
+.bar { height: 10px; border-radius: 999px; background: var(--stamp-tint); overflow: hidden; margin-block: 14px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--stamp); transition: width .2s; }
+.result-video { display: block; width: auto; max-height: 52vh; margin: 0 auto 16px; border-radius: 12px; background: #000000; }
+.dlg-actions { display: grid; gap: 10px; }
+.dlg-actions .btn { justify-content: center; }
+.dlg-tip { font-size: .875rem; margin-top: 14px !important; margin-bottom: 0 !important; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--ink); color: var(--paper);
+  font-size: .9375rem;
+  z-index: 10;
+}
+#video-bin { position: fixed; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Videixo</h1>
+  <p>Déposez les vidéos de votre évènement : l’outil choisit un passage dans chacune, les enchaîne avec un titre et votre logo, et vous rend une vidéo prête pour Instagram.</p>
+</header>
+
+<main class="layout">
+  <div class="controls">
+
+    <section class="step" aria-labelledby="h-clips">
+      <h2 id="h-clips"><span class="stamp-num" aria-hidden="true">1</span>Les vidéos</h2>
+      <label class="drop" id="drop" for="file-clips">
+        <input type="file" id="file-clips" accept="video/*,image/*" multiple>
+        <strong>Déposez vos vidéos ici</strong>
+        <span>ou cliquez pour les choisir. Les photos marchent aussi.</span>
+      </label>
+      <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
+      <div class="list-tools" id="list-tools" hidden>
+        <p class="hint">Le passage le plus net et le plus animé de chaque vidéo est choisi pour vous. Déplacez le curseur pour en prendre un autre.</p>
+        <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="h-texts">
+      <h2 id="h-texts"><span class="stamp-num" aria-hidden="true">2</span>Les textes</h2>
+      <div class="fields">
+        <div class="field wide">
+          <label for="f-title">Titre de l’évènement</label>
+          <input type="text" id="f-title" maxlength="70" placeholder="Nuit de la lecture" autocomplete="off">
+        </div>
+        <div class="field" id="field-sub">
+          <label for="f-sub">Date ou précision</label>
+          <input type="text" id="f-sub" maxlength="50" placeholder="Samedi 18 janvier" autocomplete="off">
+        </div>
+        <div class="field" id="field-handle">
+          <label for="f-handle">Compte Instagram</label>
+          <input type="text" id="f-handle" maxlength="40" placeholder="@votre.mediatheque" autocomplete="off">
+        </div>
+        <div class="field wide" id="field-end">
+          <label for="f-end">Texte de fin</label>
+          <input type="text" id="f-end" maxlength="70" autocomplete="off">
+          <small>Par exemple la date du prochain rendez-vous.</small>
+        </div>
+        <div class="field wide">
+          <label for="f-logo">Logo de la médiathèque</label>
+          <div class="file-row">
+            <img class="logo-preview" id="logo-preview" alt="Logo choisi" hidden>
+            <label class="btn" for="f-logo">Choisir une image</label>
+            <input type="file" id="f-logo" class="sr-only" accept="image/*">
+            <button type="button" class="btn btn-quiet" id="logo-remove" hidden>Retirer</button>
+            <button type="button" class="btn btn-quiet" id="logo-default" hidden>Remettre le logo de la médiathèque</button>
+          </div>
+          <small>Le logo de la médiathèque est mis par défaut. Un autre logo choisi ici est gardé sur cet appareil.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="h-look">
+      <h2 id="h-look"><span class="stamp-num" aria-hidden="true">3</span>Le rendu</h2>
+
+      <fieldset class="group">
+        <legend>Style</legend>
+        <div class="styles">
+          <input class="choice-input" type="radio" name="style" id="style-charte" value="charte">
+          <label class="style-card" for="style-charte"><b>Médiathèque</b><span>La charte : logo dans son cartouche en haut à gauche, titre aligné au logo, fondus courts</span></label>
+          <input class="choice-input" type="radio" name="style" id="style-dyn" value="dyn">
+          <label class="style-card" for="style-dyn"><b>Dynamique</b><span>Coupes rapides, titre qui claque, transitions glissées</span></label>
+          <input class="choice-input" type="radio" name="style" id="style-doux" value="doux">
+          <label class="style-card" for="style-doux"><b>Doux</b><span>Fondus enchaînés, titre en italique sur la première vidéo</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group" id="color-group">
+        <legend>Couleur</legend>
+        <div class="swatches" id="swatches"></div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Rythme</legend>
+        <div class="segmented">
+          <input class="choice-input" type="radio" name="rythme" id="r-rapide" value="rapide"><label class="seg" for="r-rapide">Rapide</label>
+          <input class="choice-input" type="radio" name="rythme" id="r-moyen" value="moyen"><label class="seg" for="r-moyen">Moyen</label>
+          <input class="choice-input" type="radio" name="rythme" id="r-pose" value="pose"><label class="seg" for="r-pose">Posé</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Vidéos filmées à l’horizontale</legend>
+        <div class="segmented">
+          <input class="choice-input" type="radio" name="landscape" id="l-blur" value="blur"><label class="seg" for="l-blur">Entières, sur fond flou</label>
+          <input class="choice-input" type="radio" name="landscape" id="l-fill" value="fill"><label class="seg" for="l-fill">Recadrées plein écran</label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Son</legend>
+        <label class="check"><input type="checkbox" id="f-sound"> <span>Garder le son des vidéos</span></label>
+        <div class="file-row">
+          <label class="btn" for="f-music">Ajouter une musique</label>
+          <input type="file" id="f-music" class="sr-only" accept="audio/*">
+          <span class="file-name" id="music-name"></span>
+          <button type="button" class="btn btn-quiet" id="music-remove" hidden>Retirer</button>
+        </div>
+        <small>Musique libre de droits uniquement. Vous pouvez aussi en ajouter une dans Instagram au moment de publier.</small>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Format</legend>
+        <div class="segmented">
+          <input class="choice-input" type="radio" name="format" id="fmt-story" value="story"><label class="seg" for="fmt-story">Story ou réel (9:16)</label>
+          <input class="choice-input" type="radio" name="format" id="fmt-post" value="post"><label class="seg" for="fmt-post">Publication (4:5)</label>
+        </div>
+      </fieldset>
+    </section>
+  </div>
+
+  <aside class="screen-col" aria-label="Aperçu et création">
+    <div class="screen">
+      <canvas id="preview" width="432" height="768" aria-label="Aperçu du montage"></canvas>
+      <p class="screen-note" id="screen-note">Aperçu avec des textes d’exemple. Ajoutez vos vidéos pour voir le montage.</p>
+    </div>
+    <div class="transport">
+      <button type="button" class="play" id="btn-play" aria-label="Lire l’aperçu">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="ico-play"><path d="M7 4.5v15l13-7.5z"/></svg>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" id="ico-pause" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      </button>
+      <label for="scrub" class="sr-only">Position dans l’aperçu</label>
+      <input type="range" id="scrub" min="0" max="10" step="0.01" value="0">
+      <span class="time num" id="time">0:00 / 0:00</span>
+      <button type="button" class="icon-btn" id="btn-sound" aria-pressed="false" aria-label="Activer le son de l’aperçu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path id="snd-on" d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" hidden/><path id="snd-off" d="m16 9 6 6m0-6-6 6"/></svg>
+      </button>
+    </div>
+    <label class="check"><input type="checkbox" id="opt-safe"> <span>Montrer les zones cachées par Instagram</span></label>
+    <div class="below-screen">
+      <div class="stamp-box" id="stamp" aria-live="polite">Durée 0:00<small>1080 × 1920 px</small></div>
+    </div>
+    <p class="warn" id="warn" hidden></p>
+    <button type="button" class="primary" id="btn-export" disabled>Créer la vidéo</button>
+    <p class="privacy">La vidéo est fabriquée sur cet appareil. Vos fichiers ne sont envoyés nulle part.</p>
+  </aside>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlg-title">
+  <div id="dlg-working">
+    <h3 id="dlg-title">Montage en cours</h3>
+    <p id="dlg-step">Préparation…</p>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="bar-fill"></i></div>
+    <p>Gardez cette page ouverte jusqu’à la fin.</p>
+    <div class="dlg-actions"><button type="button" class="btn" id="btn-cancel">Annuler</button></div>
+  </div>
+  <div id="dlg-done" hidden>
+    <h3>Votre vidéo est prête</h3>
+    <video class="result-video" id="result-video" controls playsinline></video>
+    <div class="dlg-actions">
+      <a class="primary" id="btn-download" href="#" download="story.mp4">Télécharger la vidéo</a>
+      <button type="button" class="btn" id="btn-share" hidden>Partager vers Instagram…</button>
+      <button type="button" class="btn btn-quiet" id="btn-close-done">Fermer</button>
+    </div>
+    <p class="dlg-tip">Sur téléphone, « Partager » ouvre directement Instagram. Sur ordinateur, téléchargez la vidéo puis envoyez-la sur votre téléphone, ou publiez-la depuis Meta Business Suite.</p>
+  </div>
+  <div id="dlg-error" hidden>
+    <h3>La vidéo n’a pas pu être créée</h3>
+    <p id="dlg-error-msg"></p>
+    <div class="dlg-actions"><button type="button" class="btn" id="btn-close-err">Fermer</button></div>
+  </div>
+</dialog>
+
+<div id="video-bin" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="lib/mediabunny.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
