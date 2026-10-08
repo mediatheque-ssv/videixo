@@ -1,20 +1,22 @@
-# Videixo
+# Vidéixo
 
-Une petite application web pour transformer les vidéos d’un évènement de la médiathèque en une vidéo dynamique, prête à poster sur Instagram (story, réel ou publication).
+<img src="assets/videixo-512.png" alt="Logo de Vidéixo : Ixo, le chihuahua noir et blanc" width="128">
 
-On dépose les clips filmés au téléphone, l’outil choisit automatiquement un passage de quelques secondes dans chacun, les enchaîne avec des transitions, ajoute le titre de l’évènement au début et le logo à la fin, puis fabrique un fichier MP4.
+Une petite application web pour transformer les vidéos ou les photos d’un évènement de la médiathèque en une vidéo dynamique, prête à poster sur Instagram (story, réel ou publication).
+
+On dépose les clips filmés au téléphone ou les photos, l’outil choisit automatiquement un passage de quelques secondes dans chaque vidéo, anime les photos, enchaîne le tout avec des transitions, ajoute le titre de l’évènement et le logo, puis fabrique un fichier MP4.
 
 Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serveur, ni sur GitHub ni ailleurs. GitHub sert uniquement à héberger la page.
 
 ## Ce que fait l’outil
 
-- Accepte plusieurs vidéos (et des photos si besoin), dans l’ordre de votre choix.
+- Accepte des vidéos, des photos, ou un mélange des deux, dans l’ordre de votre choix. Les photos sont animées par un léger zoom.
 - Choisit dans chaque vidéo le passage le plus net et le plus animé, en évitant les débuts tremblants et les plans sombres. Un curseur permet d’en prendre un autre.
 - Trois styles :
   - **Médiathèque** (par défaut) : la charte graphique de la médiathèque, voir plus bas ;
   - **Dynamique** : coupes rapides, gros titre, transitions glissées ;
   - **Doux** : fondus enchaînés, titre en italique.
-- Titre et date au début, texte de fin, logo et compte Instagram à la fin, légende facultative sur chaque plan.
+- Titre et date (facultative) au début, légende facultative sur chaque plan, et si vous le souhaitez un écran de fin avec le logo, un message et le compte Instagram.
 - Couleur au choix, trois rythmes, format 9:16 (story ou réel) ou 4:5 (publication).
 - Garde le son des vidéos et peut ajouter une musique (libre de droits).
 - Exporte un MP4 1080 × 1920 (H.264 + AAC), le format attendu par Instagram. Sur téléphone, le bouton « Partager » l’envoie directement à Instagram.
@@ -24,7 +26,7 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
 
 1. Créez un compte sur [github.com](https://github.com) si la médiathèque n’en a pas.
 2. Cliquez sur **New repository** (bouton vert « New » ou menu « + » en haut à droite).
-   - Nom : par exemple `videixo`.
+   - Nom : par exemple `videixo` (sans accent : il apparaîtra dans l’adresse).
    - Cochez **Public** (GitHub Pages gratuit l’exige ; seule la page est publique, jamais vos vidéos).
    - Cliquez sur **Create repository**.
 3. Sur la page du dépôt, cliquez sur **uploading an existing file** (ou **Add file › Upload files**).
@@ -43,8 +45,8 @@ Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refait
 ## Utilisation
 
 1. Ouvrez l’adresse de l’outil dans **Chrome**, **Edge** ou **Safari** (versions récentes).
-2. Déposez les vidéos de l’évènement. L’analyse prend quelques secondes par vidéo.
-3. Remplissez le titre, la date, et la première fois le compte Instagram et le logo.
+2. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
+3. Remplissez le titre et, si vous voulez, la date. Cochez « Ajouter un écran de fin » pour terminer sur le logo et un message.
 4. Choisissez le style, la couleur et le rythme. Le bouton lecture sous l’aperçu montre le résultat.
 5. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
 
@@ -68,15 +70,16 @@ Le style Médiathèque reprend la charte des gabarits d’affiches de Servon-sur
 
 - le **cartouche** blanc avec ses rubans pétrole et anis, accroché en haut à gauche comme sur les affiches, d’un tiers de la largeur de l’image, avec le logo de la médiathèque à l’intérieur. Il descend au début de la vidéo et reste en place jusqu’à la fin ;
 - le **titre** aligné sur le bord gauche du logo, la **date** en colonne à sa droite (« 18 / janvier / 2025 ») ;
-- des **fondus courts** entre les vidéos, et pas d’écran de fin : la vidéo se termine sur la dernière image.
+- des **fondus courts** entre les vidéos ;
+- un **écran de fin** facultatif : fond blanc, logo, message en pétrole et compte Instagram.
 
-Le bandeau du bas des affiches n’est pas repris. Les champs « Texte de fin » et « Compte Instagram » ne servent qu’aux styles Dynamique et Doux ; ils sont masqués quand le style Médiathèque est choisi.
+Le bandeau du bas des affiches n’est pas repris.
 
 En format story, Instagram affiche le nom du compte en haut à gauche, par-dessus le haut du cartouche. Cochez « Montrer les zones cachées par Instagram » pour voir ce qui est recouvert.
 
 ### Le logo
 
-Le logo de la médiathèque est inclus (`assets/logo-mediatheque.png`) et utilisé par défaut. Il a été découpé dans le PDF de la charte, donc en définition moyenne. Pour un rendu plus net, remplacez ce fichier par la version haute définition du logo (PNG à fond transparent), en gardant le même nom.
+Le logo de la médiathèque est inclus (`assets/logo-mediatheque.png`) et utilisé par défaut. Il a été découpé dans une capture d’écran, donc en définition moyenne. Pour un rendu plus net, remplacez ce fichier par la version haute définition du logo (PNG à fond transparent), en gardant le même nom.
 
 ### Les polices
 
@@ -95,12 +98,16 @@ Les réglages modifiables se trouvent en haut de `app.js` :
 - `STYLES` : la durée des plans pour chaque rythme, la durée du titre et de la fin ;
 - `DEFAULT_END` : le texte de fin proposé par défaut.
 
+## Le logo de Vidéixo
+
+Ixo, le chihuahua noir et blanc, dessiné en vecteur sur fond anis (`assets/videixo.svg`). Il sert d’icône dans l’onglet du navigateur et sur l’écran d’accueil des téléphones (`favicon-32.png`, `apple-touch-icon.png`).
+
 ## Fichiers
 
 ```
 index.html   la page
 app.js       le montage (aperçu, analyse, export)
-assets/      logo de la médiathèque
+assets/      logo de la médiathèque, logo et icônes de Vidéixo
 lib/         Mediabunny, bibliothèque de lecture et d’écriture vidéo (licence MPL-2.0)
 fonts/       polices Advent Pro, Carlito, Anton, Literata et Atkinson Hyperlegible (licence SIL OFL 1.1)
 ```

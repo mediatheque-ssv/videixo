@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Videixo</title>
+<title>Vidéixo</title>
+<link rel="icon" href="assets/videixo.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <meta name="description" content="Assemblez les vidéos d’un évènement en une story Instagram dynamique, directement dans le navigateur.">
 <style>
 /* Table de montage de la médiathèque : réglages numérotés à gauche, écran vertical à droite.
@@ -75,6 +78,8 @@ button, input, select { font: inherit; color: inherit; }
   letter-spacing: -0.01em;
 }
 .top p { margin: 8px 0 0; color: var(--ink-soft); max-width: 60ch; }
+.brand { display: flex; align-items: center; gap: 16px; }
+.brand img { width: 64px; height: 64px; flex: none; }
 
 /* ---------- Mise en page ---------- */
 .layout {
@@ -349,23 +354,26 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
 <body>
 
 <header class="top">
-  <h1>Videixo</h1>
-  <p>Déposez les vidéos de votre évènement : l’outil choisit un passage dans chacune, les enchaîne avec un titre et votre logo, et vous rend une vidéo prête pour Instagram.</p>
+  <div class="brand">
+    <img src="assets/videixo.svg" alt="" width="64" height="64">
+    <h1>Vidéixo</h1>
+  </div>
+  <p>Déposez les vidéos ou les photos de votre évènement : l’outil les enchaîne avec un titre et votre logo, et vous rend une vidéo prête pour Instagram.</p>
 </header>
 
 <main class="layout">
   <div class="controls">
 
     <section class="step" aria-labelledby="h-clips">
-      <h2 id="h-clips"><span class="stamp-num" aria-hidden="true">1</span>Les vidéos</h2>
+      <h2 id="h-clips"><span class="stamp-num" aria-hidden="true">1</span>Les vidéos et les photos</h2>
       <label class="drop" id="drop" for="file-clips">
         <input type="file" id="file-clips" accept="video/*,image/*" multiple>
-        <strong>Déposez vos vidéos ici</strong>
-        <span>ou cliquez pour les choisir. Les photos marchent aussi.</span>
+        <strong>Déposez vos vidéos ou vos photos ici</strong>
+        <span>ou cliquez pour les choisir. Vous pouvez mélanger les deux.</span>
       </label>
       <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
       <div class="list-tools" id="list-tools" hidden>
-        <p class="hint">Le passage le plus net et le plus animé de chaque vidéo est choisi pour vous. Déplacez le curseur pour en prendre un autre.</p>
+        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous ; déplacez le curseur pour en prendre un autre. Les photos sont animées par un léger zoom.</p>
         <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
       </div>
     </section>
@@ -377,18 +385,10 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
           <label for="f-title">Titre de l’évènement</label>
           <input type="text" id="f-title" maxlength="70" placeholder="Nuit de la lecture" autocomplete="off">
         </div>
-        <div class="field" id="field-sub">
-          <label for="f-sub">Date ou précision</label>
+        <div class="field wide" id="field-sub">
+          <label for="f-sub">Date <small>(facultatif)</small></label>
           <input type="text" id="f-sub" maxlength="50" placeholder="Samedi 18 janvier" autocomplete="off">
-        </div>
-        <div class="field" id="field-handle">
-          <label for="f-handle">Compte Instagram</label>
-          <input type="text" id="f-handle" maxlength="40" placeholder="@votre.mediatheque" autocomplete="off">
-        </div>
-        <div class="field wide" id="field-end">
-          <label for="f-end">Texte de fin</label>
-          <input type="text" id="f-end" maxlength="70" autocomplete="off">
-          <small>Par exemple la date du prochain rendez-vous.</small>
+          <small>Laissez vide pour ne pas afficher de date.</small>
         </div>
         <div class="field wide">
           <label for="f-logo">Logo de la médiathèque</label>
@@ -401,6 +401,18 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
           </div>
           <small>Le logo de la médiathèque est mis par défaut. Un autre logo choisi ici est gardé sur cet appareil.</small>
         </div>
+        <div class="field wide">
+          <label class="check"><input type="checkbox" id="f-endscreen"> <span>Ajouter un écran de fin, avec le logo et un message</span></label>
+        </div>
+        <div class="field wide" id="field-end">
+          <label for="f-end">Texte de fin</label>
+          <input type="text" id="f-end" maxlength="70" autocomplete="off">
+          <small>Par exemple la date du prochain rendez-vous.</small>
+        </div>
+        <div class="field wide" id="field-handle">
+          <label for="f-handle">Compte Instagram <small>(facultatif)</small></label>
+          <input type="text" id="f-handle" maxlength="40" placeholder="@votre.mediatheque" autocomplete="off">
+        </div>
       </div>
     </section>
 
@@ -411,7 +423,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
         <legend>Style</legend>
         <div class="styles">
           <input class="choice-input" type="radio" name="style" id="style-charte" value="charte">
-          <label class="style-card" for="style-charte"><b>Médiathèque</b><span>La charte : logo dans son cartouche en haut à gauche, titre aligné au logo, fondus courts</span></label>
+          <label class="style-card" for="style-charte"><b>Médiathèque</b><span>La charte : logo dans son cartouche en haut à gauche, titre aligné sur le logo, fondus courts</span></label>
           <input class="choice-input" type="radio" name="style" id="style-dyn" value="dyn">
           <label class="style-card" for="style-dyn"><b>Dynamique</b><span>Coupes rapides, titre qui claque, transitions glissées</span></label>
           <input class="choice-input" type="radio" name="style" id="style-doux" value="doux">
@@ -466,7 +478,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
   <aside class="screen-col" aria-label="Aperçu et création">
     <div class="screen">
       <canvas id="preview" width="432" height="768" aria-label="Aperçu du montage"></canvas>
-      <p class="screen-note" id="screen-note">Aperçu avec des textes d’exemple. Ajoutez vos vidéos pour voir le montage.</p>
+      <p class="screen-note" id="screen-note">Aperçu avec des textes d’exemple. Ajoutez vos vidéos ou vos photos pour voir le montage.</p>
     </div>
     <div class="transport">
       <button type="button" class="play" id="btn-play" aria-label="Lire l’aperçu">

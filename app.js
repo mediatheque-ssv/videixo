@@ -1,5 +1,5 @@
 /*
- * Videixo — assemble les vidéos d’un évènement en une story Instagram.
+ * Vidéixo — assemble les vidéos d’un évènement en une story Instagram.
  * Tout se passe dans le navigateur : décodage et encodage vidéo avec WebCodecs,
  * via la bibliothèque Mediabunny (lib/mediabunny.min.js, licence MPL-2.0).
  */
@@ -22,7 +22,7 @@ const FORMATS = {
 
 // Durées en secondes. clipDur = longueur de l’extrait pris dans chaque vidéo.
 const STYLES = {
-  charte: { clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, trans: 0.3, titleDur: 3.2, kb: 0.05, noOutro: true },
+  charte: { clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, trans: 0.3, titleDur: 3.2, outroDur: 2.8, kb: 0.05 },
   dyn: { clipDur: { rapide: 1.3, moyen: 1.9, pose: 2.7 }, trans: 0.32, introDur: 1.7, outroDur: 2.6, kb: 0.07 },
   doux: { clipDur: { rapide: 2.2, moyen: 3.0, pose: 4.0 }, trans: 0.7, titleDur: 2.8, outroDur: 3.0, kb: 0.05 },
 };
@@ -49,7 +49,8 @@ const COLORS = [
 
 const DEFAULT_LOGO = 'assets/logo-mediatheque.png';
 
-const PLACEHOLDER = { title: 'Nuit de la lecture', sub: 'Samedi 18 janvier', handle: '@votre.mediatheque' };
+// Exemple de titre montré dans l’aperçu tant qu’aucune vidéo n’est ajoutée (la date n’apparaît que si elle est saisie).
+const PLACEHOLDER = { title: 'Nuit de la lecture' };
 const DEFAULT_END = 'Merci d’être venus !';
 
 const FONT = {
@@ -82,6 +83,7 @@ const state = {
   landscape: 'blur',
   keepSound: true,
   format: 'story',
+  endScreen: false,
 };
 
 function loadSettings() {
@@ -89,7 +91,7 @@ function loadSettings() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return;
     const s = JSON.parse(raw);
-    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData']) {
+    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen']) {
       if (s[k] !== undefined && s[k] !== null) state[k] = s[k];
     }
     if (!STYLES[state.style]) state.style = 'charte';
@@ -100,8 +102,8 @@ function loadSettings() {
 
 function saveSettings() {
   try {
-    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData } = state;
-    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData }));
+    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen } = state;
+    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen }));
   } catch (e) { /* quota dépassé ou stockage bloqué : sans gravité */ }
 }
 
@@ -242,11 +244,12 @@ function segDurFor(item) {
   return Math.max(0.6, Math.min(L, item.duration));
 }
 
-// Texte d’un champ : en aperçu, un exemple grisé remplace un champ vide ; à l’export, rien.
+// Texte d’un champ. Tant qu’aucune vidéo n’est ajoutée, l’aperçu montre un exemple grisé ;
+// ensuite, un champ vide n’affiche rien, exactement comme dans la vidéo finale.
 function textOf(field, forExport) {
   const v = (state[field] || '').trim();
   if (v) return { text: v, ghost: false };
-  if (!forExport && PLACEHOLDER[field]) return { text: PLACEHOLDER[field], ghost: true };
+  if (!forExport && !state.items.length && PLACEHOLDER[field]) return { text: PLACEHOLDER[field], ghost: true };
   return null;
 }
 
@@ -268,7 +271,7 @@ function buildTimeline(forExport = false) {
   });
   // Aperçu sans vidéo : un fond gris tient la place des vidéos, comme sur les gabarits d’affiche.
   if (!forExport && !media.length) segs.push({ type: 'blank', dur: Math.max(2.4, (S.titleDur || 0) + 0.4), idx: 0 });
-  if (!S.noOutro && (!forExport || endText || state.logo || handle)) segs.push({ type: 'outro', dur: S.outroDur });
+  if (state.endScreen && (endText || state.logo || handle)) segs.push({ type: 'outro', dur: S.outroDur });
   if (!segs.length) segs.push({ type: 'blank', dur: 2.4, idx: 0 });
 
   segs.forEach((s, i) => {
@@ -346,7 +349,7 @@ function drawSeg(ctx, tl, seg, t, frameOf) {
   const lt = t - seg.start;
   ctx.save();
   if (seg.type === 'intro') drawIntroDyn(ctx, tl, lt);
-  else if (seg.type === 'outro') (tl.style === 'dyn' ? drawOutroDyn : drawOutroDoux)(ctx, tl, lt);
+  else if (seg.type === 'outro') ({ dyn: drawOutroDyn, doux: drawOutroDoux, charte: drawOutroCharte })[tl.style](ctx, tl, lt);
   else if (seg.type === 'blank') drawBlank(ctx, tl);
   else drawMediaSeg(ctx, tl, seg, lt, frameOf(seg));
   ctx.restore();
@@ -814,9 +817,37 @@ const CARTOUCHE = {
       ['M', 128.14, 63.875], ['L', 32.971, 80.658], ['C', 25.564, 53.616, 14.96, 27.147, 1.239, 1.852],
       ['L', 0, 0], ['L', 108.09, 0], ['C', 116.773, 20.814, 123.469, 42.208, 128.14, 63.875]] },
   ],
-  // Zone réservée au logo, à l’intérieur du cartouche.
-  logoBox: { x: 28, y: 10, w: 68, h: 46 },
+  // Zone réservée au logo, à l’intérieur du cartouche (proportions de l’affiche de la médiathèque).
+  logoBox: { x: 29, y: 9, w: 81, h: 49 },
 };
+
+// Bord gauche visible du logo (le « m » de médiathèque), en fraction de sa largeur.
+function logoInkLeft(img) {
+  if (img._inkLeft !== undefined) return img._inkLeft;
+  let left = 0;
+  try {
+    const k = Math.min(1, 400 / img.naturalWidth);
+    const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+    const c = makeCanvas(w, h);
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0, w, h);
+    const d = cx.getImageData(0, 0, w, h).data;
+    outer: for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        const i = (y * w + x) * 4;
+        if (d[i + 3] > 110 && Math.min(d[i], d[i + 1], d[i + 2]) < 225) { left = x / w; break outer; }
+      }
+    }
+  } catch (e) { /* image illisible : on garde le bord de l’image */ }
+  img._inkLeft = left;
+  return left;
+}
+
+// Position x qui fait commencer le dessin des lettres exactement à x0 (sans l’approche de la police).
+function inkX(ctx, text, x0) {
+  const m = ctx.measureText(text);
+  return x0 + (m.actualBoundingBoxLeft || 0);
+}
 
 function cartoucheLayout(tl) {
   const s = (tl.W / 3) / CARTOUCHE.top;
@@ -828,7 +859,7 @@ function cartoucheLayout(tl) {
     const w = tl.logo.naturalWidth * k, h = tl.logo.naturalHeight * k;
     logo = { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
   }
-  return { s, logo, textX: logo ? logo.x : box.x, bottom: CARTOUCHE.height * s };
+  return { s, logo, textX: logo ? logo.x + logo.w * logoInkLeft(tl.logo) : box.x, bottom: CARTOUCHE.height * s };
 }
 
 function drawCartouche(ctx, tl, L, dy, alpha) {
@@ -919,7 +950,7 @@ function drawTitleCharte(ctx, tl, t) {
     if (q <= 0) return;
     const e = easeOutCubic(q);
     ctx.globalAlpha = e * out * ghost;
-    ctx.fillText(l, x0 - (1 - e) * 40, firstBase + i * lh);
+    ctx.fillText(l, inkX(ctx, l, x0) - (1 - e) * 40, firstBase + i * lh);
   });
   ctx.restore();
 
@@ -971,8 +1002,67 @@ function drawCaptionCharte(ctx, tl, text, lt, dur, delay) {
   ctx.textBaseline = 'alphabetic';
   ctx.shadowColor = 'rgba(0,0,0,0.4)';
   ctx.shadowBlur = 16;
-  fit.lines.forEach((l, i) => ctx.fillText(l, x0, bottom - (fit.lines.length - 1 - i) * lh));
+  fit.lines.forEach((l, i) => ctx.fillText(l, inkX(ctx, l, x0), bottom - (fit.lines.length - 1 - i) * lh));
   ctx.restore();
+}
+
+// Écran de fin du style Médiathèque : fond blanc, logo, message et compte, sans décor.
+function drawOutroCharte(ctx, tl, lt) {
+  const { W, H, F } = tl;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+  const zoneTop = F.safeTop + 20, zoneBottom = H - F.safeBottom - 20;
+  const parts = [];
+  const logoMaxH = tl.H > 1500 ? 260 : 200;
+  if (tl.logo) parts.push({ kind: 'logo', h: logoMaxH });
+  let fit = null;
+  if (tl.endText) {
+    fit = fitText(ctx, tl.endText, { family: FONT.charteTitle, weight: '400', maxW: W - 200, maxLines: 3, max: 132, min: 72 });
+    parts.push({ kind: 'text', h: fit.lines.length * fit.size });
+  }
+  if (tl.handle) parts.push({ kind: 'handle', h: 60 });
+  const gap = 64;
+  const total = parts.reduce((s, p) => s + p.h, 0) + gap * Math.max(0, parts.length - 1);
+  let y = Math.max(zoneTop, (zoneTop + zoneBottom) / 2 - total / 2);
+  for (const part of parts) {
+    if (part.kind === 'logo') {
+      const q = easeOutCubic(clamp((lt - 0.2) / 0.8));
+      const logo = tl.logo;
+      // Pas plus de deux fois sa taille d’origine, pour rester net.
+      const k = Math.min((W - 360) / logo.naturalWidth, logoMaxH / logo.naturalHeight, 2) * (0.95 + 0.05 * q);
+      const lw = logo.naturalWidth * k, lh = logo.naturalHeight * k;
+      ctx.save();
+      ctx.globalAlpha = q;
+      ctx.drawImage(logo, (W - lw) / 2, y + (part.h - lh) / 2, lw, lh);
+      ctx.restore();
+    } else if (part.kind === 'text') {
+      ctx.save();
+      ctx.font = fit.font;
+      ctx.fillStyle = CHARTE.petrole;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      fit.lines.forEach((l, i) => {
+        const q = clamp((lt - 0.45 - i * 0.14) / 0.7);
+        if (q <= 0) return;
+        const e = easeOutCubic(q);
+        ctx.globalAlpha = e;
+        ctx.fillText(l, W / 2, y + (i + 0.8) * fit.size + (1 - e) * 24);
+      });
+      ctx.restore();
+    } else {
+      const q = easeOutCubic(clamp((lt - 0.9) / 0.6));
+      const hf = fitText(ctx, tl.handle.text, { family: FONT.charteText, weight: '400', maxW: W - 200, maxLines: 1, max: 50, min: 30 });
+      ctx.save();
+      ctx.globalAlpha = q * (tl.handle.ghost ? 0.5 : 1);
+      ctx.font = hf.font;
+      ctx.fillStyle = CHARTE.anthracite;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(hf.lines[0], W / 2, y + 44);
+      ctx.restore();
+    }
+    y += part.h + gap;
+  }
 }
 
 function drawBlank(ctx, tl) {
@@ -985,7 +1075,7 @@ function drawBlank(ctx, tl) {
   ctx.font = `400 46px ${FONT.charteText}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Vos vidéos ici', W / 2, H * 0.72);
+  ctx.fillText('Vos vidéos ou photos ici', W / 2, H * 0.72);
   ctx.restore();
 }
 
@@ -1724,7 +1814,7 @@ async function createVideo(ctl, onProgress) {
     await queueRunning;
   }
   const tlx = buildTimeline(true);
-  if (!tlx.segs.some((s) => s.type === 'media')) throw new UserError('Ajoutez au moins une vidéo lisible.');
+  if (!tlx.segs.some((s) => s.type === 'media')) throw new UserError('Ajoutez au moins une vidéo ou une photo lisible.');
   const { W, H } = tlx;
   const N = Math.round(tlx.total * FPS);
 
@@ -1898,14 +1988,12 @@ function syncColorInputs() {
   $('c-custom').value = state.color;
 }
 
-// Le style Médiathèque suit la charte et n’a pas d’écran de fin : la couleur, le texte de fin
-// et le compte Instagram ne servent qu’aux deux autres styles.
+// La couleur ne sert qu’aux styles Dynamique et Doux (le style Médiathèque suit la charte) ;
+// le texte de fin et le compte Instagram ne servent que si l’écran de fin est demandé.
 function updateColorGroup() {
-  const charte = state.style === 'charte';
-  $('color-group').hidden = charte;
-  $('field-end').hidden = charte;
-  $('field-handle').hidden = charte;
-  $('field-sub').classList.toggle('wide', charte);
+  $('color-group').hidden = state.style === 'charte';
+  $('field-end').hidden = !state.endScreen;
+  $('field-handle').hidden = !state.endScreen;
 }
 
 function setRadio(name, value) {
@@ -1959,6 +2047,7 @@ function initForm() {
   $('f-end').value = state.endText;
   $('f-handle').value = state.handle;
   $('f-sound').checked = state.keepSound;
+  $('f-endscreen').checked = state.endScreen;
   setRadio('style', state.style);
   setRadio('rythme', state.rythme);
   setRadio('landscape', state.landscape);
@@ -1977,6 +2066,13 @@ function initForm() {
 
   $('f-title').addEventListener('input', (e) => { state.title = e.target.value; rebuild(); showIntro(); });
   $('f-sub').addEventListener('input', (e) => { state.sub = e.target.value; rebuild(); showIntro(); });
+  $('f-endscreen').addEventListener('change', (e) => {
+    state.endScreen = e.target.checked;
+    updateColorGroup();
+    saveSettings();
+    rebuild();
+    if (state.endScreen) showOutro(); else requestDraw();
+  });
   $('f-end').addEventListener('input', (e) => { state.endText = e.target.value; saveSettings(); rebuild(); showOutro(); });
   $('f-handle').addEventListener('input', (e) => { state.handle = e.target.value; saveSettings(); rebuild(); showOutro(); });
   $('f-logo').addEventListener('change', (e) => { onLogoFile(e.target.files[0]); e.target.value = ''; });
