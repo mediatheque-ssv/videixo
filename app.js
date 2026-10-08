@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
    ========================================================================= */
 
 const FPS = 30;
-const STORE_KEY = 'videixo:v1';
+const STORE_KEY = 'videixo:v2';
 
 const FORMATS = {
   story: { W: 1080, H: 1920, safeTop: 250, safeBottom: 400 },
@@ -51,7 +51,7 @@ const DEFAULT_LOGO = 'assets/logo-mediatheque.png';
 
 // Exemple de titre montré dans l’aperçu tant qu’aucune vidéo n’est ajoutée (la date n’apparaît que si elle est saisie).
 const PLACEHOLDER = { title: 'Nuit de la lecture' };
-const DEFAULT_END = 'Merci d’être venus !';
+const DEFAULT_END = 'Merci d’être venu·es\u00a0!';
 
 const FONT = {
   impact: '"Anton", "Impact", "Arial Narrow", sans-serif',
@@ -73,7 +73,7 @@ const state = {
   title: '',
   sub: '',
   endText: DEFAULT_END,
-  handle: '',
+  handle: '@mediatheque.servon.sur.vilaine',
   logo: null,       // HTMLImageElement
   logoData: undefined, // undefined : logo de la médiathèque ; '' : pas de logo ; data URL : autre logo
   music: null,      // { file, name, url, el, buffer }

@@ -96,7 +96,8 @@ Les réglages modifiables se trouvent en haut de `app.js` :
 - `CHARTE` : les couleurs de la charte, utilisées par le style Médiathèque ;
 - `COLORS` : les pastilles de couleur des styles Dynamique et Doux (couleurs de la charte par défaut) ;
 - `STYLES` : la durée des plans pour chaque rythme, la durée du titre et de la fin ;
-- `DEFAULT_END` : le texte de fin proposé par défaut.
+- `DEFAULT_END` : le texte de fin proposé par défaut (« Merci d’être venu·es ! ») ;
+- `handle` dans `state` : le compte Instagram prérempli (@mediatheque.servon.sur.vilaine).
 
 ## Le logo de Vidéixo
 
