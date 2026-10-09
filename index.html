@@ -165,7 +165,44 @@ button, input, select { font: inherit; color: inherit; }
 .num { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; }
 .clip-extract { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; font-size: .875rem; }
 .clip-extract output { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
-.clip-extract input { grid-column: 1 / -1; width: 100%; accent-color: var(--stamp); margin: 2px 0; }
+.extract-label { font-weight: 700; }
+/* Curseur à deux poignées : deux curseurs superposés dont seules les poignées captent le doigt ou la souris */
+.range2 { position: relative; grid-column: 1 / -1; height: 30px; }
+.range2-track { position: absolute; left: 9px; right: 9px; top: 13px; height: 4px; border-radius: 2px; background: var(--line); }
+.range2-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--stamp); }
+.range2 input[type="range"] {
+  position: absolute; inset: 0;
+  width: 100%; height: 30px; margin: 0;
+  background: transparent;
+  -webkit-appearance: none; appearance: none;
+  pointer-events: none;
+}
+.range2 input[type="range"]:focus-visible { outline: none; }
+.range2 input[type="range"]::-webkit-slider-runnable-track { height: 30px; background: transparent; }
+.range2 input[type="range"]::-moz-range-track { height: 30px; background: transparent; }
+.range2 input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: 6px;
+  border-radius: 50%; border: 3px solid var(--sheet);
+  background: var(--stamp); box-shadow: 0 0 0 1px var(--stamp);
+  cursor: ew-resize; pointer-events: auto;
+}
+.range2 input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px;
+  border-radius: 50%; border: 3px solid var(--sheet);
+  background: var(--stamp); box-shadow: 0 0 0 1px var(--stamp);
+  cursor: ew-resize; pointer-events: auto;
+}
+.range2 input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--stamp), 0 0 0 5px var(--stamp-tint); }
+.range2 input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 1px var(--stamp), 0 0 0 5px var(--stamp-tint); }
+.range2 input[type="range"]:disabled::-webkit-slider-thumb { background: var(--line); box-shadow: none; cursor: default; }
+.range2 input[type="range"]:disabled::-moz-range-thumb { background: var(--line); box-shadow: none; cursor: default; }
+.link-btn {
+  padding: 0; border: 0; background: none;
+  color: var(--stamp); font: inherit; font-weight: 700;
+  text-decoration: underline; text-underline-offset: 2px;
+  cursor: pointer;
+}
 .clip-status { margin: 0; font-size: .8125rem; color: var(--ink-soft); }
 .clip.is-error .clip-status { color: var(--danger); font-weight: 700; }
 .clip-actions { display: grid; gap: 4px; }
@@ -400,7 +437,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
       </label>
       <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
       <div class="list-tools" id="list-tools" hidden>
-        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous ; déplacez le curseur pour en prendre un autre. Les photos sont animées par un léger zoom.</p>
+        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster. Les photos sont animées par un léger zoom.</p>
         <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
       </div>
     </section>
@@ -413,20 +450,9 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
           <input type="text" id="f-title" maxlength="70" placeholder="Nuit de la lecture" autocomplete="off">
         </div>
         <div class="field wide" id="field-sub">
-          <label for="f-sub">Date <small>(facultatif)</small></label>
+          <label for="f-sub">Sous-titre <small>(facultatif)</small></label>
           <input type="text" id="f-sub" maxlength="50" placeholder="Samedi 18 janvier" autocomplete="off">
-          <small>Laissez vide pour ne pas afficher de date.</small>
-        </div>
-        <div class="field wide">
-          <label for="f-logo">Logo de la médiathèque</label>
-          <div class="file-row">
-            <img class="logo-preview" id="logo-preview" alt="Logo choisi" hidden>
-            <label class="btn" for="f-logo">Choisir une image</label>
-            <input type="file" id="f-logo" class="sr-only" accept="image/*">
-            <button type="button" class="btn btn-quiet" id="logo-remove" hidden>Retirer</button>
-            <button type="button" class="btn btn-quiet" id="logo-default" hidden>Remettre le logo de la médiathèque</button>
-          </div>
-          <small>Le logo de la médiathèque est mis par défaut. Un autre logo choisi ici est gardé sur cet appareil.</small>
+          <small>Une date, un lieu, un public… Laissez vide pour ne rien afficher.</small>
         </div>
         <div class="field wide">
           <label class="check"><input type="checkbox" id="f-endscreen"> <span>Ajouter un écran de fin, avec le logo et un message</span></label>
@@ -440,6 +466,17 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
           <label for="f-handle">Compte Instagram <small>(facultatif)</small></label>
           <input type="text" id="f-handle" maxlength="40" placeholder="@mediatheque.servon.sur.vilaine" autocomplete="off">
         </div>
+        <div class="field wide" id="field-logo">
+          <label for="f-logo">Logo de la médiathèque</label>
+          <div class="file-row">
+            <img class="logo-preview" id="logo-preview" alt="Logo choisi" hidden>
+            <label class="btn" for="f-logo">Choisir une image</label>
+            <input type="file" id="f-logo" class="sr-only" accept="image/*">
+            <button type="button" class="btn btn-quiet" id="logo-remove" hidden>Retirer</button>
+            <button type="button" class="btn btn-quiet" id="logo-default" hidden>Remettre le logo de la médiathèque</button>
+          </div>
+          <small>Le logo de la médiathèque est mis par défaut. Un autre logo choisi ici est gardé sur cet appareil.</small>
+        </div>
       </div>
     </section>
 
@@ -450,7 +487,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
         <legend>Style</legend>
         <div class="styles">
           <input class="choice-input" type="radio" name="style" id="style-charte" value="charte">
-          <label class="style-card" for="style-charte"><b>Médiathèque</b><span>La charte : logo dans son cartouche en haut à gauche, titre aligné sur le logo, fondus courts</span></label>
+          <label class="style-card" for="style-charte"><b>Médiathèque</b><span>Les couleurs et les polices de la charte, titre en haut à gauche, fondus courts</span></label>
           <input class="choice-input" type="radio" name="style" id="style-dyn" value="dyn">
           <label class="style-card" for="style-dyn"><b>Dynamique</b><span>Coupes rapides, titre qui claque, transitions glissées</span></label>
           <input class="choice-input" type="radio" name="style" id="style-doux" value="doux">

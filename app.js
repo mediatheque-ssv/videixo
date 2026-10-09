@@ -83,7 +83,7 @@ const state = {
   landscape: 'blur',
   keepSound: true,
   format: 'story',
-  endScreen: false,
+  endScreen: true,
 };
 
 function loadSettings() {
@@ -124,7 +124,7 @@ function fmtTime(s) {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 function fmtTimeTenths(s) {
-  s = Math.max(0, s);
+  s = Math.round(Math.max(0, s) * 10) / 10;
   const m = Math.floor(s / 60);
   const r = s - m * 60;
   const whole = Math.floor(r);
@@ -238,10 +238,22 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function clipLength() { return STYLES[state.style].clipDur[state.rythme]; }
 
+const MIN_EXTRACT = 0.5;
+
+// Durée d’un plan dans le montage. Une vidéo dont l’extrait a été réglé à la main garde sa durée ;
+// sinon, la durée suit le rythme choisi.
 function segDurFor(item) {
   const L = clipLength();
   if (item.kind === 'image') return L;
+  if (item.userStart && item.end > item.start) return Math.max(MIN_EXTRACT, item.end - item.start);
   return Math.max(0.6, Math.min(L, item.duration));
+}
+
+// Début et fin de l’extrait d’une vidéo, en secondes.
+function extractRange(item) {
+  const d = segDurFor(item);
+  const a = clamp(item.start, 0, Math.max(0, item.duration - d));
+  return [a, Math.min(item.duration, a + d)];
 }
 
 // Texte d’un champ. Tant qu’aucune vidéo n’est ajoutée, l’aperçu montre un exemple grisé ;
@@ -338,10 +350,7 @@ function renderFrame(ctx, tl, t, frameOf) {
     drawTransition(ctx, tl, b.transIn.kind, p, (c) => drawSeg(c, tl, a, t, frameOf), (c) => drawSeg(c, tl, b, t, frameOf));
   }
   if (tl.style === 'doux') drawTitleDoux(ctx, tl, t);
-  if (tl.style === 'charte') {
-    drawTitleCharte(ctx, tl, t);
-    drawCartoucheOverlay(ctx, tl, t);
-  }
+  if (tl.style === 'charte') drawTitleCharte(ctx, tl, t);
   ctx.restore();
 }
 
@@ -801,112 +810,22 @@ function drawOutroDoux(ctx, tl, lt) {
 
 /* ---------- Style « Médiathèque » : la charte en mouvement ---------- */
 
-// Tracés du cartouche et de ses rubans, relevés dans la charte (unités du gabarit, origine en haut à gauche).
-// Le bord du haut du cartouche mesure 108,09 unités : 1/3 de la largeur de l’image.
-const CARTOUCHE = {
-  top: 108.09,
-  height: 80.66,
-  shapes: [
-    { color: CHARTE.anis, path: [
-      ['M', 138.508, 0], ['C', 136.921, 21.735, 133.433, 43.114, 128.14, 63.875],
-      ['L', 35.471, 36.47], ['C', 37.837, 24.471, 39.611, 12.299, 40.771, 0]] },
-    { color: CHARTE.petrole, path: [
-      ['M', 128.14, 63.875], ['L', 31.616, 59.163], ['C', 30.748, 39.445, 28.27, 19.653, 24.168, 0],
-      ['L', 123.218, 0], ['C', 126.74, 21.281, 128.372, 42.661, 128.14, 63.875]] },
-    { color: '#FFFFFF', path: [
-      ['M', 128.14, 63.875], ['L', 32.971, 80.658], ['C', 25.564, 53.616, 14.96, 27.147, 1.239, 1.852],
-      ['L', 0, 0], ['L', 108.09, 0], ['C', 116.773, 20.814, 123.469, 42.208, 128.14, 63.875]] },
-  ],
-  // Zone réservée au logo, à l’intérieur du cartouche (proportions de l’affiche de la médiathèque).
-  logoBox: { x: 29, y: 9, w: 81, h: 49 },
-};
-
-// Bord gauche visible du logo (le « m » de médiathèque), en fraction de sa largeur.
-function logoInkLeft(img) {
-  if (img._inkLeft !== undefined) return img._inkLeft;
-  let left = 0;
-  try {
-    const k = Math.min(1, 400 / img.naturalWidth);
-    const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
-    const c = makeCanvas(w, h);
-    const cx = c.getContext('2d', { willReadFrequently: true });
-    cx.drawImage(img, 0, 0, w, h);
-    const d = cx.getImageData(0, 0, w, h).data;
-    outer: for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) {
-        const i = (y * w + x) * 4;
-        if (d[i + 3] > 110 && Math.min(d[i], d[i + 1], d[i + 2]) < 225) { left = x / w; break outer; }
-      }
-    }
-  } catch (e) { /* image illisible : on garde le bord de l’image */ }
-  img._inkLeft = left;
-  return left;
-}
-
 // Position x qui fait commencer le dessin des lettres exactement à x0 (sans l’approche de la police).
 function inkX(ctx, text, x0) {
   const m = ctx.measureText(text);
   return x0 + (m.actualBoundingBoxLeft || 0);
 }
 
-function cartoucheLayout(tl) {
-  const s = (tl.W / 3) / CARTOUCHE.top;
-  const b = CARTOUCHE.logoBox;
-  const box = { x: b.x * s, y: b.y * s, w: b.w * s, h: b.h * s };
-  let logo = null;
-  if (tl.logo) {
-    const k = Math.min(box.w / tl.logo.naturalWidth, box.h / tl.logo.naturalHeight);
-    const w = tl.logo.naturalWidth * k, h = tl.logo.naturalHeight * k;
-    logo = { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
-  }
-  return { s, logo, textX: logo ? logo.x + logo.w * logoInkLeft(tl.logo) : box.x, bottom: CARTOUCHE.height * s };
+// Marge gauche des textes et haut du titre dans le style Médiathèque (sous le nom du compte en story).
+function charteLayout(tl) {
+  return { x: Math.round(tl.W * 0.09), top: tl.F.safeTop + 70 };
 }
 
-function drawCartouche(ctx, tl, L, dy, alpha) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(0, dy);
-  CARTOUCHE.shapes.forEach((shape, i) => {
-    ctx.save();
-    if (i === 0) {
-      ctx.shadowColor = 'rgba(0,0,0,0.22)';
-      ctx.shadowBlur = 26;
-      ctx.shadowOffsetY = 6;
-    }
-    ctx.beginPath();
-    for (const c of shape.path) {
-      if (c[0] === 'M') ctx.moveTo(c[1] * L.s, c[2] * L.s);
-      else if (c[0] === 'L') ctx.lineTo(c[1] * L.s, c[2] * L.s);
-      else ctx.bezierCurveTo(c[1] * L.s, c[2] * L.s, c[3] * L.s, c[4] * L.s, c[5] * L.s, c[6] * L.s);
-    }
-    ctx.closePath();
-    ctx.fillStyle = shape.color;
-    ctx.fill();
-    ctx.restore();
-  });
-  if (L.logo) ctx.drawImage(tl.logo, L.logo.x, L.logo.y, L.logo.w, L.logo.h);
-  ctx.restore();
-}
-
-// Le cartouche descend au début et reste en place jusqu’à la fin, où il s’efface.
-function drawCartoucheOverlay(ctx, tl, t) {
-  if (!tl.logo) return;
-  if (!tl.segs.some((s) => s.type === 'media' || s.type === 'blank')) return;
-  let alpha = 1;
-  const outro = tl.segs.find((s) => s.type === 'outro');
-  if (outro && t >= outro.start) {
-    const d = outro.transIn ? outro.transIn.dur : 0.01;
-    alpha = 1 - clamp((t - outro.start) / d);
-    if (alpha <= 0) return;
-  }
-  const L = cartoucheLayout(tl);
-  const q = easeOutCubic(clamp((t - 0.1) / 0.7));
-  drawCartouche(ctx, tl, L, -(1 - q) * (L.bottom + 40), alpha);
-}
-
-// Date en colonne, comme sur les affiches : « XX / Mois / Année ».
+// Sous-titre en colonne, comme la date sur les affiches : « XX / Mois / Année ».
 function dateLines(text) {
-  const m = text.match(/^(.*?)(\d{1,2}(?:er)?)\s+([A-Za-zÀ-ÿ]+\.?)\s*(\d{4})?\s*[,;–-]?\s*(.*)$/);
+  // Seulement pour une vraie date (« Samedi 18 janvier 2025 ») ; tout autre sous-titre garde son texte.
+  const MOIS = 'janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre';
+  const m = text.match(new RegExp(`^((?:.*\\s)?)(\\d{1,2}(?:er)?)\\s+(${MOIS})\\.?\\s*(\\d{4})?\\s*[,;–-]?\\s*(.*)$`, 'i'));
   if (!m) return null;
   const lines = [(m[1].trim() ? m[1].trim() + ' ' : '') + m[2], m[3]];
   if (m[4]) lines.push(m[4]);
@@ -921,8 +840,8 @@ function drawTitleCharte(ctx, tl, t) {
   if (t >= D) return;
   const { W, H } = tl;
   const out = clamp((D - t) / 0.6);
-  const L = cartoucheLayout(tl);
-  const x0 = L.textX;
+  const L = charteLayout(tl);
+  const x0 = L.x;
 
   ctx.save();
   ctx.globalAlpha = out;
@@ -936,7 +855,7 @@ function drawTitleCharte(ctx, tl, t) {
   const ghost = tl.title.ghost ? 0.5 : 1;
   const fit = fitText(ctx, tl.title.text, { family: FONT.charteTitle, weight: '400', maxW: W - x0 - 60, maxLines: 3, max: 176, min: 84 });
   const lh = fit.size * 0.98;
-  const firstBase = L.bottom + fit.size * 0.62 + fit.size * 0.78;
+  const firstBase = L.top + fit.size * 0.78;
 
   ctx.save();
   ctx.font = fit.font;
@@ -984,7 +903,7 @@ function drawCaptionCharte(ctx, tl, text, lt, dur, delay) {
   const { W, H, F } = tl;
   const a = clamp((lt - delay) / 0.5) * clamp((dur - lt) / 0.4);
   if (a <= 0) return;
-  const x0 = cartoucheLayout(tl).textX;
+  const x0 = charteLayout(tl).x;
   const fit = fitText(ctx, text, { family: FONT.charteTitle, weight: '400', maxW: W - x0 - 60, maxLines: 2, max: 96, min: 58 });
   const lh = fit.size * 1.0;
   const bottom = H - F.safeBottom - 30;
@@ -1360,13 +1279,17 @@ function makeRow(item) {
       <p class="clip-name"></p>
       <p class="clip-meta"></p>
       <div class="clip-extract" hidden>
-        <label for="start-${item.id}">Extrait</label>
-        <output for="start-${item.id}"></output>
-        <input type="range" id="start-${item.id}" min="0" max="1" step="0.1" value="0">
+        <span class="extract-label" id="ext-${item.id}">Extrait</span>
+        <output for="start-${item.id} end-${item.id}"></output>
+        <div class="range2" role="group" aria-labelledby="ext-${item.id}">
+          <span class="range2-track" aria-hidden="true"><span class="range2-fill"></span></span>
+          <input type="range" id="start-${item.id}" min="0" max="1" step="0.1" value="0" aria-label="Début de l’extrait">
+          <input type="range" id="end-${item.id}" min="0" max="1" step="0.1" value="1" aria-label="Fin de l’extrait">
+        </div>
       </div>
       <label class="sr-only" for="cap-${item.id}">Légende affichée sur ce plan</label>
       <input type="text" id="cap-${item.id}" maxlength="60" placeholder="Légende (facultatif)">
-      <p class="clip-status" role="status"></p>
+      <p class="clip-status" role="status"><span class="clip-status-text"></span> <button type="button" class="link-btn" data-act="auto" hidden>Revenir au choix automatique</button></p>
     </div>
     <div class="clip-actions">
       <button type="button" class="icon-btn" data-act="up" aria-label="Monter">${ICONS.up}</button>
@@ -1374,16 +1297,36 @@ function makeRow(item) {
       <button type="button" class="icon-btn" data-act="remove" aria-label="Retirer">${ICONS.remove}</button>
     </div>`;
   li.querySelector('.clip-name').textContent = item.name;
-  const range = li.querySelector('input[type="range"]');
-  range.addEventListener('input', () => {
-    item.start = parseFloat(range.value);
+  const rStart = li.querySelector(`#start-${item.id}`);
+  const rEnd = li.querySelector(`#end-${item.id}`);
+  const onRange = (which) => {
+    const [a0, b0] = extractRange(item);
+    let a = which === 'start' ? parseFloat(rStart.value) : a0;
+    let b = which === 'end' ? parseFloat(rEnd.value) : b0;
+    // Les deux poignées ne se croisent pas : l’extrait dure au moins une demi-seconde.
+    if (which === 'start') a = Math.min(a, b - MIN_EXTRACT);
+    else b = Math.max(b, a + MIN_EXTRACT);
+    a = clamp(a, 0, item.duration - MIN_EXTRACT);
+    b = clamp(b, a + MIN_EXTRACT, item.duration);
+    item.start = Math.round(a * 10) / 10;
+    item.end = Math.round(b * 10) / 10;
     item.userStart = true;
-    updateExtractLabel(item);
+    updateRow(item);
     rebuild();
     const seg = tl.segs.find((s) => s.item === item);
-    if (seg) seekPreview(seg.start + Math.min(0.4, seg.dur / 3));
+    if (seg) seekPreview(which === 'start' ? seg.start + 0.05 : seg.start + seg.dur - 0.08);
     scheduleThumb(item);
-    updateRowStatus(item);
+  };
+  rStart.addEventListener('input', () => onRange('start'));
+  rEnd.addEventListener('input', () => onRange('end'));
+  li.querySelector('[data-act="auto"]').addEventListener('click', () => {
+    item.userStart = false;
+    item.end = undefined;
+    item.start = item.samples ? bestStart(item, segDurFor(item)) : item.start;
+    updateRow(item);
+    rebuild();
+    scheduleThumb(item);
+    rStart.focus();
   });
   const cap = li.querySelector('input[type="text"]');
   cap.addEventListener('input', () => {
@@ -1423,9 +1366,9 @@ function renderClipList() {
 
 function updateExtractLabel(item) {
   if (!item.row || item.kind !== 'video' || !item.ok) return;
-  const L = segDurFor(item);
-  const a = clamp(item.start, 0, Math.max(0, item.duration - L));
-  item.row.querySelector('output').textContent = `${fmtTimeTenths(a)} → ${fmtTimeTenths(a + L)}`;
+  const [a, b] = extractRange(item);
+  const dur = (Math.round((b - a) * 10) / 10).toFixed(1).replace('.', ',');
+  item.row.querySelector('output').textContent = `${fmtTimeTenths(a)} → ${fmtTimeTenths(b)} (${dur} s)`;
 }
 
 function updateRow(item) {
@@ -1437,14 +1380,19 @@ function updateRow(item) {
   else if (item.ok) meta.innerHTML = `<span class="num">${fmtTime(item.duration)}</span>, ${item.w >= item.h ? 'horizontale' : 'verticale'}${item.at ? '' : ', sans son'}`;
   else meta.textContent = 'Vidéo';
   const ext = li.querySelector('.clip-extract');
-  const range = ext.querySelector('input');
   if (item.kind === 'video' && item.ok) {
-    const L = segDurFor(item);
-    const max = Math.max(0, item.duration - L);
+    const [a, b] = extractRange(item);
+    const max = Math.round(item.duration * 10) / 10;
+    const tooShort = item.duration < MIN_EXTRACT * 2;
     ext.hidden = false;
-    range.max = String(Math.max(0.1, Math.round(max * 10) / 10));
-    range.disabled = max < 0.1;
-    range.value = String(clamp(item.start, 0, max));
+    for (const [r, v] of [[li.querySelector(`#start-${item.id}`), a], [li.querySelector(`#end-${item.id}`), b]]) {
+      r.max = String(max);
+      r.value = String(Math.round(v * 10) / 10);
+      r.disabled = tooShort;
+    }
+    const fill = li.querySelector('.range2-fill');
+    fill.style.left = `${(a / item.duration) * 100}%`;
+    fill.style.width = `${((b - a) / item.duration) * 100}%`;
     updateExtractLabel(item);
   } else {
     ext.hidden = true;
@@ -1457,13 +1405,16 @@ function updateRowStatus(item) {
   const li = item.row;
   if (!li) return;
   const st = li.querySelector('.clip-status');
+  const autoBtn = li.querySelector('[data-act="auto"]');
+  autoBtn.hidden = true;
   let msg = '';
   if (item.status === 'loading') msg = 'Lecture du fichier…';
   else if (item.status === 'analyzing') msg = `Recherche du meilleur passage… ${Math.round((item.progress || 0) * 100)} %`;
   else if (item.status === 'error') msg = item.error;
+  else if (item.kind === 'video' && item.userStart) { msg = 'Extrait réglé à la main.'; autoBtn.hidden = false; }
   else if (item.kind === 'video' && item.duration - segDurFor(item) < 0.1) msg = 'Vidéo courte : utilisée en entier.';
-  else if (item.kind === 'video' && !item.userStart) msg = 'Passage choisi automatiquement.';
-  st.textContent = msg;
+  else if (item.kind === 'video') msg = 'Passage choisi automatiquement.';
+  st.querySelector('.clip-status-text').textContent = msg;
   st.hidden = !msg;
 }
 
@@ -1989,11 +1940,10 @@ function syncColorInputs() {
 }
 
 // La couleur ne sert qu’aux styles Dynamique et Doux (le style Médiathèque suit la charte) ;
-// le texte de fin et le compte Instagram ne servent que si l’écran de fin est demandé.
+// le texte de fin, le compte Instagram et le logo ne servent que sur l’écran de fin.
 function updateColorGroup() {
   $('color-group').hidden = state.style === 'charte';
-  $('field-end').hidden = !state.endScreen;
-  $('field-handle').hidden = !state.endScreen;
+  for (const id of ['field-end', 'field-handle', 'field-logo']) $(id).hidden = !state.endScreen;
 }
 
 function setRadio(name, value) {

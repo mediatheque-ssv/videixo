@@ -11,12 +11,12 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
 ## Ce que fait l’outil
 
 - Accepte des vidéos, des photos, ou un mélange des deux, dans l’ordre de votre choix. Les photos sont animées par un léger zoom.
-- Choisit dans chaque vidéo le passage le plus net et le plus animé, en évitant les débuts tremblants et les plans sombres. Un curseur permet d’en prendre un autre.
+- Choisit dans chaque vidéo le passage le plus net et le plus animé, en évitant les débuts tremblants et les plans sombres. Un curseur à deux poignées permet de régler le début et la fin de chaque extrait, et donc sa durée.
 - Trois styles :
   - **Médiathèque** (par défaut) : la charte graphique de la médiathèque, voir plus bas ;
   - **Dynamique** : coupes rapides, gros titre, transitions glissées ;
   - **Doux** : fondus enchaînés, titre en italique.
-- Titre et date (facultative) au début, légende facultative sur chaque plan, et si vous le souhaitez un écran de fin avec le logo, un message et le compte Instagram.
+- Titre et sous-titre facultatif (une date, un lieu, un public…) au début, légende facultative sur chaque plan, et un écran de fin avec le logo, un message et le compte Instagram (activé par défaut, peut être décoché).
 - Couleur au choix, trois rythmes, format 9:16 (story ou réel) ou 4:5 (publication).
 - Garde le son des vidéos et peut ajouter une musique (libre de droits).
 - Exporte un MP4 1080 × 1920 (H.264 + AAC), le format attendu par Instagram. Sur téléphone, le bouton « Partager » l’envoie directement à Instagram.
@@ -46,7 +46,7 @@ Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refait
 
 1. Ouvrez l’adresse de l’outil dans **Chrome**, **Edge** ou **Safari** (versions récentes).
 2. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
-3. Remplissez le titre et, si vous voulez, la date. Cochez « Ajouter un écran de fin » pour terminer sur le logo et un message.
+3. Remplissez le titre et, si vous voulez, le sous-titre. Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
 4. Choisissez le style, la couleur et le rythme. Le bouton lecture sous l’aperçu montre le résultat.
 5. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
 
@@ -68,14 +68,12 @@ Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refait
 
 Le style Médiathèque reprend la charte des gabarits d’affiches de Servon-sur-Vilaine (Approche Design, novembre 2023) :
 
-- le **cartouche** blanc avec ses rubans pétrole et anis, accroché en haut à gauche comme sur les affiches, d’un tiers de la largeur de l’image, avec le logo de la médiathèque à l’intérieur. Il descend au début de la vidéo et reste en place jusqu’à la fin ;
-- le **titre** aligné sur le bord gauche du logo, la **date** en colonne à sa droite (« 18 / janvier / 2025 ») ;
+- les **polices** et les **couleurs** de la charte ;
+- le **titre** en haut à gauche, sous le nom du compte qu’Instagram affiche en story ; le **sous-titre** à sa droite, en colonne quand c’est une date (« Samedi 18 / janvier / 2025 ») ;
 - des **fondus courts** entre les vidéos ;
-- un **écran de fin** facultatif : fond blanc, logo, message en pétrole et compte Instagram.
+- l’**écran de fin** : fond blanc, logo de la médiathèque, message en pétrole et compte Instagram.
 
-Le bandeau du bas des affiches n’est pas repris.
-
-En format story, Instagram affiche le nom du compte en haut à gauche, par-dessus le haut du cartouche. Cochez « Montrer les zones cachées par Instagram » pour voir ce qui est recouvert.
+Le logo n’apparaît que sur l’écran de fin. Le cartouche et le bandeau du bas des affiches ne sont pas repris.
 
 ### Le logo
 
