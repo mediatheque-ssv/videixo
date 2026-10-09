@@ -47,7 +47,7 @@ Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refait
 1. Ouvrez l’adresse de l’outil dans **Chrome**, **Edge** ou **Safari** (versions récentes).
 2. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
 3. Remplissez le titre et, si vous voulez, le sous-titre. Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
-4. Choisissez le style, la couleur et le rythme. Le bouton lecture sous l’aperçu montre le résultat.
+4. Choisissez le style, la couleur et le rythme. À chaque modification, l’aperçu repart du début et se lance tout seul ; le bouton lecture permet de le revoir.
 5. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
 
 ### Conseils

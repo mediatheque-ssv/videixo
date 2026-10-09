@@ -1053,7 +1053,9 @@ function addFiles(fileList) {
   if (!added) return;
   renderClipList();
   rebuild();
-  runQueue();
+  restartPreview();
+  // Une fois les nouveaux fichiers analysés (meilleurs passages trouvés), l’aperçu repart du début.
+  runQueue().then(restartPreview);
 }
 
 function runQueue() {
@@ -1313,8 +1315,6 @@ function makeRow(item) {
     item.userStart = true;
     updateRow(item);
     rebuild();
-    const seg = tl.segs.find((s) => s.item === item);
-    if (seg) seekPreview(which === 'start' ? seg.start + 0.05 : seg.start + seg.dur - 0.08);
     scheduleThumb(item);
   };
   rStart.addEventListener('input', () => onRange('start'));
@@ -1331,9 +1331,7 @@ function makeRow(item) {
   const cap = li.querySelector('input[type="text"]');
   cap.addEventListener('input', () => {
     item.caption = cap.value;
-    const seg = tl.segs.find((s) => s.item === item);
-    if (seg && !pv.playing) seekPreview(seg.start + Math.min(seg.dur * 0.6, 0.9));
-    else requestDraw();
+    requestDraw();
   });
   li.querySelector('.clip-actions').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -1562,6 +1560,11 @@ function loop() {
   if (!pv.playing) return;
   pv.t = (performance.now() - pv.t0) / 1000;
   if (pv.t >= tl.total) {
+    if (pv.once) {
+      pv.t = tl.total - 0.001;
+      pause();
+      return;
+    }
     pv.t = 0;
     pv.t0 = performance.now();
     if (state.music) state.music.el.currentTime = 0;
@@ -1572,7 +1575,9 @@ function loop() {
   pv.raf = requestAnimationFrame(loop);
 }
 
-function play() {
+// once : lecture automatique après un changement, qui s’arrête à la fin au lieu de boucler.
+function play(once = false) {
+  pv.once = once;
   if (pv.playing) return;
   if (pv.t >= tl.total - 0.05) pv.t = 0;
   pv.playing = true;
@@ -1595,10 +1600,24 @@ function pause() {
 }
 
 function seekPreview(t) {
+  clearTimeout(restartTimer);
   if (pv.playing) pause();
   pv.t = clamp(t, 0, tl.total - 0.001);
   syncVideos(pv.t, false);
   requestDraw();
+}
+
+// Après chaque changement de réglage, l’aperçu revient au début, puis se relance tout seul
+// dès que la saisie s’arrête, pour montrer le résultat depuis la première image.
+let restartTimer = 0;
+function restartPreview() {
+  clearTimeout(restartTimer);
+  if (pv.playing) pause();
+  pv.t = 0;
+  syncVideos(0, false);
+  if (state.music) state.music.el.currentTime = 0;
+  requestDraw();
+  restartTimer = setTimeout(() => play(true), 450);
 }
 
 function updateSummary() {
@@ -1984,8 +2003,6 @@ async function onLogoFile(file) {
     await setLogo(c.toDataURL('image/png'));
     saveSettings();
     rebuild();
-    const outro = tl.segs.find((x) => x.type === 'outro');
-    if (outro) seekPreview(outro.start + 1.4);
   } catch (e) {
     toast('Ce logo n’a pas pu être lu. Essayez avec un PNG ou un JPEG.');
   }
@@ -2007,24 +2024,16 @@ function initForm() {
   setLogo(state.logoData === undefined ? DEFAULT_LOGO : state.logoData).then(rebuild);
   updateColorGroup();
 
-  const showIntro = () => { if (!pv.playing) seekPreview(state.style === 'dyn' ? 1.2 : 1.8); };
-  const showOutro = () => {
-    if (pv.playing) return;
-    const o = tl.segs.find((x) => x.type === 'outro');
-    if (o) seekPreview(o.start + Math.min(o.dur - 0.05, 1.8));
-  };
-
-  $('f-title').addEventListener('input', (e) => { state.title = e.target.value; rebuild(); showIntro(); });
-  $('f-sub').addEventListener('input', (e) => { state.sub = e.target.value; rebuild(); showIntro(); });
+  $('f-title').addEventListener('input', (e) => { state.title = e.target.value; rebuild(); });
+  $('f-sub').addEventListener('input', (e) => { state.sub = e.target.value; rebuild(); });
   $('f-endscreen').addEventListener('change', (e) => {
     state.endScreen = e.target.checked;
     updateColorGroup();
     saveSettings();
     rebuild();
-    if (state.endScreen) showOutro(); else requestDraw();
   });
-  $('f-end').addEventListener('input', (e) => { state.endText = e.target.value; saveSettings(); rebuild(); showOutro(); });
-  $('f-handle').addEventListener('input', (e) => { state.handle = e.target.value; saveSettings(); rebuild(); showOutro(); });
+  $('f-end').addEventListener('input', (e) => { state.endText = e.target.value; saveSettings(); rebuild(); });
+  $('f-handle').addEventListener('input', (e) => { state.handle = e.target.value; saveSettings(); rebuild(); });
   $('f-logo').addEventListener('change', (e) => { onLogoFile(e.target.files[0]); e.target.value = ''; });
   $('logo-remove').addEventListener('click', () => { setLogo(''); saveSettings(); rebuild(); });
   $('logo-default').addEventListener('click', () => { setLogo(DEFAULT_LOGO).then(() => { saveSettings(); rebuild(); }); });
@@ -2036,7 +2045,6 @@ function initForm() {
       rebuild();
       renderClipList();
       updateColorGroup();
-      if (r.name === 'style') showIntro();
     });
   });
 
@@ -2069,7 +2077,14 @@ function initForm() {
   $('btn-clear').addEventListener('click', () => { [...state.items].forEach(removeItem); });
 
   // Aperçu
-  $('btn-play').addEventListener('click', () => (pv.playing ? pause() : play()));
+  $('btn-play').addEventListener('click', () => { clearTimeout(restartTimer); if (pv.playing) pause(); else play(); });
+
+  // Tout changement dans la colonne des réglages (champ, case, choix, bouton, fichier) ramène l’aperçu au début.
+  // Ces écouteurs sont posés sur le conteneur : ils passent après ceux de chaque champ, une fois le montage recalculé.
+  const controls = document.querySelector('.controls');
+  controls.addEventListener('input', restartPreview);
+  controls.addEventListener('change', restartPreview);
+  controls.addEventListener('click', (e) => { if (e.target.closest('button:not(:disabled)')) restartPreview(); });
   $('scrub').addEventListener('input', (e) => seekPreview(parseFloat(e.target.value)));
   $('opt-safe').addEventListener('change', requestDraw);
   $('btn-sound').addEventListener('click', () => {
