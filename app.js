@@ -21,6 +21,11 @@ const FORMATS = {
 };
 
 // Durées en secondes. clipDur = longueur de l’extrait pris dans chaque vidéo.
+// Durée du titre proposée par défaut pour chaque style, et bornes du réglage (secondes).
+const TITLE_DUR_DEFAULT = { charte: 4, doux: 4, dyn: 2.5 };
+const TITLE_DUR_MIN = 1.5;
+const TITLE_DUR_MAX = 8;
+
 const STYLES = {
   charte: { clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, trans: 0.3, titleDur: 3.2, outroDur: 2.8, kb: 0.05 },
   dyn: { clipDur: { rapide: 1.3, moyen: 1.9, pose: 2.7 }, trans: 0.32, introDur: 1.7, outroDur: 2.6, kb: 0.07 },
@@ -84,6 +89,8 @@ const state = {
   keepSound: true,
   format: 'story',
   endScreen: true,
+  // Durée d’affichage du titre au début, en secondes, pour chaque style.
+  titleDurs: { ...TITLE_DUR_DEFAULT },
 };
 
 function loadSettings() {
@@ -97,13 +104,19 @@ function loadSettings() {
     if (!STYLES[state.style]) state.style = 'charte';
     if (!FORMATS[state.format]) state.format = 'story';
     if (!STYLES.dyn.clipDur[state.rythme]) state.rythme = 'moyen';
+    if (s.titleDurs && typeof s.titleDurs === 'object') {
+      for (const k of Object.keys(TITLE_DUR_DEFAULT)) {
+        const v = Number(s.titleDurs[k]);
+        if (Number.isFinite(v)) state.titleDurs[k] = clamp(v, TITLE_DUR_MIN, TITLE_DUR_MAX);
+      }
+    }
   } catch (e) { /* stockage indisponible : on garde les valeurs par défaut */ }
 }
 
 function saveSettings() {
   try {
-    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen } = state;
-    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen }));
+    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs } = state;
+    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs }));
   } catch (e) { /* quota dépassé ou stockage bloqué : sans gravité */ }
 }
 
@@ -275,14 +288,16 @@ function buildTimeline(forExport = false) {
   const endText = (state.endText || '').trim();
   const segs = [];
 
-  if (state.style === 'dyn' && title) segs.push({ type: 'intro', dur: S.introDur });
+  const wantedTitleDur = state.titleDurs[state.style] || TITLE_DUR_DEFAULT[state.style];
+  // Style Dynamique : le titre a son propre écran de couleur. Autres styles : il s’affiche sur les premières vidéos.
+  if (state.style === 'dyn' && title) segs.push({ type: 'intro', dur: wantedTitleDur });
   media.forEach((item, k) => {
     const dur = segDurFor(item);
     const srcIn = item.kind === 'video' ? clamp(item.start, 0, Math.max(0, item.duration - dur)) : 0;
     segs.push({ type: 'media', item, dur, srcIn, idx: k });
   });
   // Aperçu sans vidéo : un fond gris tient la place des vidéos, comme sur les gabarits d’affiche.
-  if (!forExport && !media.length) segs.push({ type: 'blank', dur: Math.max(2.4, (S.titleDur || 0) + 0.4), idx: 0 });
+  if (!forExport && !media.length) segs.push({ type: 'blank', dur: Math.max(2.4, wantedTitleDur + 0.4), idx: 0 });
   if (state.endScreen && (endText || state.logo || handle)) segs.push({ type: 'outro', dur: S.outroDur });
   if (!segs.length) segs.push({ type: 'blank', dur: 2.4, idx: 0 });
 
@@ -300,9 +315,13 @@ function buildTimeline(forExport = false) {
   });
 
   const last = segs[segs.length - 1];
+  const outro = segs.find((x) => x.type === 'outro');
+  const mediaEnd = outro ? outro.start : last.start + last.dur;
   return {
     segs, S, F, W: F.W, H: F.H,
     total: last.start + last.dur,
+    // Le titre posé sur les vidéos s’arrête au plus tard quand commence l’écran de fin.
+    titleDur: Math.min(wantedTitleDur, mediaEnd),
     style: state.style,
     color: state.color,
     title, sub, handle, endText,
@@ -471,7 +490,7 @@ function drawMediaSeg(ctx, tl, seg, lt, fr) {
   if (item.caption && item.caption.trim()) {
     if (tl.style === 'dyn') drawCaptionDyn(ctx, tl, item.caption.trim(), lt);
     else {
-      const delay = tl.title && seg.start < tl.S.titleDur ? tl.S.titleDur - seg.start : 0.3;
+      const delay = tl.title && seg.start < tl.titleDur ? tl.titleDur - seg.start : 0.3;
       (tl.style === 'doux' ? drawCaptionDoux : drawCaptionCharte)(ctx, tl, item.caption.trim(), lt, seg.dur, delay);
     }
   }
@@ -658,7 +677,7 @@ function drawOutroDyn(ctx, tl, lt) {
 
 function drawTitleDoux(ctx, tl, t) {
   if (!tl.title) return;
-  const D = tl.S.titleDur;
+  const D = tl.titleDur;
   if (t >= D) return;
   const { W, H } = tl;
   const out = clamp((D - t) / 0.6);
@@ -836,7 +855,7 @@ function dateLines(text) {
 
 function drawTitleCharte(ctx, tl, t) {
   if (!tl.title) return;
-  const D = tl.S.titleDur;
+  const D = tl.titleDur;
   if (t >= D) return;
   const { W, H } = tl;
   const out = clamp((D - t) / 0.6);
@@ -1625,6 +1644,16 @@ function updateSummary() {
   const busy = state.items.some((i) => i.status === 'loading' || i.status === 'analyzing');
   const exportTl = buildTimeline(true);
   const { W, H } = exportTl;
+
+  // Sur les styles où le titre passe sur les vidéos, il ne peut pas durer plus longtemps qu’elles.
+  const wantedTitle = state.titleDurs[state.style] || TITLE_DUR_DEFAULT[state.style];
+  const capped = state.style !== 'dyn' && media.length > 0 && exportTl.titleDur < wantedTitle - 0.05;
+  $('titledur-note').hidden = !capped;
+  if (capped) {
+    const secs = String(Math.round(exportTl.titleDur * 10) / 10).replace('.', ',');
+    $('titledur-note').textContent = `Limité à ${secs} s : les vidéos ne durent pas plus longtemps avant l’écran de fin.`;
+  }
+
   $('stamp').innerHTML = '';
   $('stamp').append(`Durée ${fmtTime(Math.round(exportTl.total))}`);
   const small = document.createElement('small');
@@ -1965,6 +1994,16 @@ function updateColorGroup() {
   for (const id of ['field-end', 'field-handle', 'field-logo']) $(id).hidden = !state.endScreen;
 }
 
+// Le curseur de durée du titre montre la valeur du style choisi.
+function syncTitleDur() {
+  const v = state.titleDurs[state.style] || TITLE_DUR_DEFAULT[state.style];
+  const r = $('f-titledur');
+  r.min = String(TITLE_DUR_MIN);
+  r.max = String(TITLE_DUR_MAX);
+  r.value = String(v);
+  $('titledur-out').textContent = `${String(v).replace('.', ',')} s`;
+}
+
 function setRadio(name, value) {
   const r = document.querySelector(`input[name="${name}"][value="${value}"]`);
   if (r) r.checked = true;
@@ -2011,6 +2050,7 @@ async function onLogoFile(file) {
 function initForm() {
   $('f-title').value = state.title;
   $('f-sub').value = state.sub;
+  syncTitleDur();
   $('f-end').value = state.endText;
   $('f-handle').value = state.handle;
   $('f-sound').checked = state.keepSound;
@@ -2026,6 +2066,12 @@ function initForm() {
 
   $('f-title').addEventListener('input', (e) => { state.title = e.target.value; rebuild(); });
   $('f-sub').addEventListener('input', (e) => { state.sub = e.target.value; rebuild(); });
+  $('f-titledur').addEventListener('input', (e) => {
+    state.titleDurs[state.style] = clamp(parseFloat(e.target.value), TITLE_DUR_MIN, TITLE_DUR_MAX);
+    syncTitleDur();
+    saveSettings();
+    rebuild();
+  });
   $('f-endscreen').addEventListener('change', (e) => {
     state.endScreen = e.target.checked;
     updateColorGroup();
@@ -2045,6 +2091,7 @@ function initForm() {
       rebuild();
       renderClipList();
       updateColorGroup();
+      syncTitleDur();
     });
   });
 

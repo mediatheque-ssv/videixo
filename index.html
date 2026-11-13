@@ -226,6 +226,11 @@ button, input, select { font: inherit; color: inherit; }
 .field { display: grid; gap: 6px; min-width: 0; }
 .field > label, .group > legend { font-weight: 700; font-size: .9375rem; padding: 0; }
 .field small, .group small { color: var(--ink-soft); font-size: .8125rem; }
+.field-range { grid-template-columns: 1fr auto; align-items: baseline; }
+.field-range input[type="range"], .field-range small { grid-column: 1 / -1; }
+.field-range .titledur-note { color: var(--danger); font-weight: 700; }
+.field-range input[type="range"] { width: 100%; margin: 0; accent-color: var(--stamp); }
+.field-range output { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 input[type="text"] {
   width: 100%;
   padding: 10px 12px;
@@ -453,6 +458,13 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
           <label for="f-sub">Sous-titre <small>(facultatif)</small></label>
           <input type="text" id="f-sub" maxlength="50" placeholder="Samedi 18 janvier" autocomplete="off">
           <small>Une date, un lieu, un public… Laissez vide pour ne rien afficher.</small>
+        </div>
+        <div class="field wide field-range">
+          <label for="f-titledur">Durée du titre</label>
+          <output id="titledur-out" for="f-titledur">4 s</output>
+          <input type="range" id="f-titledur" min="1.5" max="8" step="0.5" value="4">
+          <small>Temps pendant lequel le titre et le sous-titre restent à l’écran au début de la vidéo.</small>
+          <small class="titledur-note" id="titledur-note" hidden></small>
         </div>
         <div class="field wide">
           <label class="check"><input type="checkbox" id="f-endscreen"> <span>Ajouter un écran de fin, avec le logo et un message</span></label>

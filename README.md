@@ -16,7 +16,7 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
   - **Médiathèque** (par défaut) : la charte graphique de la médiathèque, voir plus bas ;
   - **Dynamique** : coupes rapides, gros titre, transitions glissées ;
   - **Doux** : fondus enchaînés, titre en italique.
-- Titre et sous-titre facultatif (une date, un lieu, un public…) au début, légende facultative sur chaque plan, et un écran de fin avec le logo, un message et le compte Instagram (activé par défaut, peut être décoché).
+- Titre et sous-titre facultatif (une date, un lieu, un public…) au début, avec une durée d’affichage réglable, légende facultative sur chaque plan, et un écran de fin avec le logo, un message et le compte Instagram (activé par défaut, peut être décoché).
 - Couleur au choix, trois rythmes, format 9:16 (story ou réel) ou 4:5 (publication).
 - Garde le son des vidéos et peut ajouter une musique (libre de droits).
 - Exporte un MP4 1080 × 1920 (H.264 + AAC), le format attendu par Instagram. Sur téléphone, le bouton « Partager » l’envoie directement à Instagram.
@@ -46,7 +46,7 @@ Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refait
 
 1. Ouvrez l’adresse de l’outil dans **Chrome**, **Edge** ou **Safari** (versions récentes).
 2. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
-3. Remplissez le titre et, si vous voulez, le sous-titre. Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
+3. Remplissez le titre et, si vous voulez, le sous-titre. Réglez au besoin la durée du titre (4 secondes par défaut). Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
 4. Choisissez le style, la couleur et le rythme. À chaque modification, l’aperçu repart du début et se lance tout seul ; le bouton lecture permet de le revoir.
 5. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
 
