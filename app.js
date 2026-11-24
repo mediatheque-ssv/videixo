@@ -253,18 +253,35 @@ function clipLength() { return STYLES[state.style].clipDur[state.rythme]; }
 
 const MIN_EXTRACT = 0.5;
 
-// Durée d’un plan dans le montage. Une vidéo dont l’extrait a été réglé à la main garde sa durée ;
-// sinon, la durée suit le rythme choisi.
-function segDurFor(item) {
-  const L = clipLength();
-  if (item.kind === 'image') return L;
-  if (item.userStart && item.end > item.start) return Math.max(MIN_EXTRACT, item.end - item.start);
-  return Math.max(0.6, Math.min(L, item.duration));
+// Vitesses proposées pour chaque vidéo (1 = normale).
+const SPEEDS = [
+  { value: 0.5, label: '×0,5 (ralenti)' },
+  { value: 0.75, label: '×0,75' },
+  { value: 1, label: 'Normale' },
+  { value: 1.5, label: '×1,5' },
+  { value: 2, label: '×2 (accéléré)' },
+];
+
+function speedOf(item) {
+  return item.kind === 'video' ? item.speed || 1 : 1;
 }
 
-// Début et fin de l’extrait d’une vidéo, en secondes.
+// Secondes de la vidéo d’origine utilisées pour un plan. Un extrait réglé à la main garde ses bornes ;
+// sinon, on prend de quoi remplir la durée du rythme à la vitesse choisie (deux fois plus de vidéo en ×2).
+function srcSpan(item) {
+  if (item.userStart && item.end > item.start) return Math.max(MIN_EXTRACT, item.end - item.start);
+  return Math.min(item.duration, Math.max(0.6, clipLength()) * speedOf(item));
+}
+
+// Durée d’un plan dans le montage, une fois la vitesse appliquée.
+function segDurFor(item) {
+  if (item.kind === 'image') return clipLength();
+  return Math.max(0.3, srcSpan(item) / speedOf(item));
+}
+
+// Début et fin de l’extrait d’une vidéo, en secondes de la vidéo d’origine.
 function extractRange(item) {
-  const d = segDurFor(item);
+  const d = srcSpan(item);
   const a = clamp(item.start, 0, Math.max(0, item.duration - d));
   return [a, Math.min(item.duration, a + d)];
 }
@@ -293,8 +310,8 @@ function buildTimeline(forExport = false) {
   if (state.style === 'dyn' && title) segs.push({ type: 'intro', dur: wantedTitleDur });
   media.forEach((item, k) => {
     const dur = segDurFor(item);
-    const srcIn = item.kind === 'video' ? clamp(item.start, 0, Math.max(0, item.duration - dur)) : 0;
-    segs.push({ type: 'media', item, dur, srcIn, idx: k });
+    const srcIn = item.kind === 'video' ? extractRange(item)[0] : 0;
+    segs.push({ type: 'media', item, dur, srcIn, speed: speedOf(item), idx: k });
   });
   // Aperçu sans vidéo : un fond gris tient la place des vidéos, comme sur les gabarits d’affiche.
   if (!forExport && !media.length) segs.push({ type: 'blank', dur: Math.max(2.4, wantedTitleDur + 0.4), idx: 0 });
@@ -1122,7 +1139,7 @@ async function probeVideo(item) {
     $('video-bin').append(v);
     item.el = v;
 
-    item.start = Math.min(item.duration * 0.3, Math.max(0, item.duration - segDurFor(item)));
+    item.start = Math.min(item.duration * 0.3, Math.max(0, item.duration - srcSpan(item)));
     item.ok = true;
     item.status = 'analyzing';
   } catch (e) {
@@ -1177,7 +1194,7 @@ async function analyzeVideo(item) {
   }
   item.samples = samples;
   item.status = 'ready';
-  if (!item.userStart) item.start = bestStart(item, segDurFor(item));
+  if (!item.userStart) item.start = bestStart(item, srcSpan(item));
   updateRow(item);
   scheduleThumb(item);
   rebuild();
@@ -1308,6 +1325,13 @@ function makeRow(item) {
           <input type="range" id="end-${item.id}" min="0" max="1" step="0.1" value="1" aria-label="Fin de l’extrait">
         </div>
       </div>
+      <div class="clip-speed" hidden>
+        <label for="speed-${item.id}">Vitesse</label>
+        <select id="speed-${item.id}">
+          ${SPEEDS.map((sp) => `<option value="${sp.value}"${sp.value === 1 ? ' selected' : ''}>${sp.label}</option>`).join('')}
+        </select>
+        <small class="speed-note" hidden>Son de ce plan coupé</small>
+      </div>
       <label class="sr-only" for="cap-${item.id}">Légende affichée sur ce plan</label>
       <input type="text" id="cap-${item.id}" maxlength="60" placeholder="Légende (facultatif)">
       <p class="clip-status" role="status"><span class="clip-status-text"></span> <button type="button" class="link-btn" data-act="auto" hidden>Revenir au choix automatique</button></p>
@@ -1318,6 +1342,12 @@ function makeRow(item) {
       <button type="button" class="icon-btn" data-act="remove" aria-label="Retirer">${ICONS.remove}</button>
     </div>`;
   li.querySelector('.clip-name').textContent = item.name;
+  li.querySelector(`#speed-${item.id}`).addEventListener('change', (e) => {
+    item.speed = parseFloat(e.target.value) || 1;
+    updateRow(item);
+    rebuild();
+    scheduleThumb(item);
+  });
   const rStart = li.querySelector(`#start-${item.id}`);
   const rEnd = li.querySelector(`#end-${item.id}`);
   const onRange = (which) => {
@@ -1341,7 +1371,7 @@ function makeRow(item) {
   li.querySelector('[data-act="auto"]').addEventListener('click', () => {
     item.userStart = false;
     item.end = undefined;
-    item.start = item.samples ? bestStart(item, segDurFor(item)) : item.start;
+    item.start = item.samples ? bestStart(item, srcSpan(item)) : item.start;
     updateRow(item);
     rebuild();
     scheduleThumb(item);
@@ -1384,8 +1414,11 @@ function renderClipList() {
 function updateExtractLabel(item) {
   if (!item.row || item.kind !== 'video' || !item.ok) return;
   const [a, b] = extractRange(item);
-  const dur = (Math.round((b - a) * 10) / 10).toFixed(1).replace('.', ',');
-  item.row.querySelector('output').textContent = `${fmtTimeTenths(a)} → ${fmtTimeTenths(b)} (${dur} s)`;
+  const sp = speedOf(item);
+  // Entre parenthèses : la durée du plan dans le montage, vitesse comprise.
+  const dur = (Math.round(((b - a) / sp) * 10) / 10).toFixed(1).replace('.', ',');
+  const how = sp < 1 ? ' au ralenti' : sp > 1 ? ' en accéléré' : '';
+  item.row.querySelector('output').textContent = `${fmtTimeTenths(a)} → ${fmtTimeTenths(b)} (${dur} s${how})`;
 }
 
 function updateRow(item) {
@@ -1414,6 +1447,13 @@ function updateRow(item) {
   } else {
     ext.hidden = true;
   }
+  const speedBox = li.querySelector('.clip-speed');
+  speedBox.hidden = !(item.kind === 'video' && item.ok);
+  if (!speedBox.hidden) {
+    speedBox.querySelector('select').value = String(speedOf(item));
+    // Le son d’une vidéo accélérée ou ralentie serait déformé : il est coupé pour ce plan.
+    speedBox.querySelector('.speed-note').hidden = !(speedOf(item) !== 1 && item.at && state.keepSound);
+  }
   li.querySelector('input[type="text"]').hidden = item.status === 'error';
   updateRowStatus(item);
 }
@@ -1429,7 +1469,7 @@ function updateRowStatus(item) {
   else if (item.status === 'analyzing') msg = `Recherche du meilleur passage… ${Math.round((item.progress || 0) * 100)} %`;
   else if (item.status === 'error') msg = item.error;
   else if (item.kind === 'video' && item.userStart) { msg = 'Extrait réglé à la main.'; autoBtn.hidden = false; }
-  else if (item.kind === 'video' && item.duration - segDurFor(item) < 0.1) msg = 'Vidéo courte : utilisée en entier.';
+  else if (item.kind === 'video' && item.duration - srcSpan(item) < 0.1) msg = 'Vidéo courte : utilisée en entier.';
   else if (item.kind === 'video') msg = 'Passage choisi automatiquement.';
   st.querySelector('.clip-status-text').textContent = msg;
   st.hidden = !msg;
@@ -1482,8 +1522,8 @@ const pvCtx = pvCanvas.getContext('2d');
 function rebuild() {
   for (const item of state.items) {
     if (item.kind === 'video' && item.ok && item.status === 'ready' && !item.userStart && item.samples) {
-      const s = bestStart(item, segDurFor(item));
-      if (s !== item.start) { item.start = s; scheduleThumb(item); }
+      const s = bestStart(item, srcSpan(item));
+      if (s !== item.start) { item.start = s; scheduleThumb(item); updateRow(item); }
     }
   }
   tl = buildTimeline(false);
@@ -1543,10 +1583,11 @@ function syncVideos(t, playing) {
     const v = seg.item.el;
     const active = t >= seg.start && t < seg.start + seg.dur;
     const upcoming = t >= seg.start - 1.2 && t < seg.start;
-    const want = Math.min(seg.srcIn + (t - seg.start), seg.item.duration - 0.05);
+    const want = Math.min(seg.srcIn + (t - seg.start) * seg.speed, seg.item.duration - 0.05);
     if (active) {
-      const audible = pv.sound && state.keepSound && !!seg.item.at;
+      const audible = pv.sound && state.keepSound && !!seg.item.at && seg.speed === 1;
       v.muted = !audible;
+      if (v.playbackRate !== seg.speed) v.playbackRate = seg.speed;
       v.volume = state.music ? 0.45 : 1;
       if (playing) {
         if (v.paused) { v.currentTime = want; v.play().catch(() => {}); }
@@ -1696,7 +1737,8 @@ async function decodeMusic() {
 
 async function renderAudioMix(tlx, ctl) {
   const SR = 48000;
-  const withVideoSound = state.keepSound && tlx.segs.some((s) => s.type === 'media' && s.item.at);
+  // Seuls les plans à vitesse normale gardent leur son.
+  const withVideoSound = state.keepSound && tlx.segs.some((s) => s.type === 'media' && s.item.at && s.speed === 1);
   if (!withVideoSound && !state.music) return null;
   const length = Math.ceil(tlx.total * SR);
   const oc = new OfflineAudioContext(2, length, SR);
@@ -1705,7 +1747,7 @@ async function renderAudioMix(tlx, ctl) {
   if (withVideoSound) {
     for (let i = 0; i < tlx.segs.length; i++) {
       const seg = tlx.segs[i];
-      if (seg.type !== 'media' || !seg.item.at) continue;
+      if (seg.type !== 'media' || !seg.item.at || seg.speed !== 1) continue;
       if (ctl.cancelled) throw new Cancelled();
       const next = tlx.segs[i + 1];
       const a = seg.start, b = seg.start + seg.dur;
@@ -1789,7 +1831,7 @@ function makeRunner(seg, tlx, N) {
   for (let i = 0; i < N; i++) {
     const t = i / FPS;
     if (t >= seg.start && t < seg.start + seg.dur) {
-      stamps.push(item.t0 + Math.min(seg.srcIn + (t - seg.start), item.duration - 0.02));
+      stamps.push(item.t0 + Math.min(seg.srcIn + (t - seg.start) * seg.speed, item.duration - 0.02));
     }
   }
   const it = sink.canvasesAtTimestamps(stamps);
@@ -2095,7 +2137,7 @@ function initForm() {
     });
   });
 
-  $('f-sound').addEventListener('change', (e) => { state.keepSound = e.target.checked; saveSettings(); });
+  $('f-sound').addEventListener('change', (e) => { state.keepSound = e.target.checked; saveSettings(); state.items.forEach(updateRow); });
   $('f-music').addEventListener('change', (e) => {
     const file = e.target.files[0];
     e.target.value = '';

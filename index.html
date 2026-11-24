@@ -166,6 +166,16 @@ button, input, select { font: inherit; color: inherit; }
 .clip-extract { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; font-size: .875rem; }
 .clip-extract output { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .extract-label { font-weight: 700; }
+.clip-speed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: .875rem; }
+.clip-speed label { font-weight: 700; }
+.clip-speed select {
+  padding: 6px 10px;
+  border: 1.5px solid var(--line); border-radius: 8px;
+  background: var(--sheet);
+  font-size: .875rem;
+}
+.clip-speed select:focus { border-color: var(--stamp); outline: 3px solid var(--stamp-tint); outline-offset: 0; }
+.speed-note { color: var(--ink-soft); font-size: .8125rem; }
 /* Curseur à deux poignées : deux curseurs superposés dont seules les poignées captent le doigt ou la souris */
 .range2 { position: relative; grid-column: 1 / -1; height: 30px; }
 .range2-track { position: absolute; left: 9px; right: 9px; top: 13px; height: 4px; border-radius: 2px; background: var(--line); }
@@ -442,7 +452,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
       </label>
       <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
       <div class="list-tools" id="list-tools" hidden>
-        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster. Les photos sont animées par un léger zoom.</p>
+        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster, et changez sa vitesse si besoin. Les photos sont animées par un léger zoom.</p>
         <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
       </div>
     </section>
