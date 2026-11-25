@@ -47,13 +47,16 @@ Ajoutez cette adresse aux favoris des postes de la médiathèque et sur l’écr
 
 Pour remplacer un fichier (par exemple une nouvelle version de `app.js`), refaites **Add file › Upload files** avec le nouveau fichier : il remplace l’ancien. La page en ligne se met à jour en une à deux minutes.
 
+Quand `app.js` change, changez aussi le numéro `?v=` de la ligne `<script src="app.js?v=…">` dans `index.html` (n’importe quel nouveau numéro). Sans ça, un navigateur peut garder l’ancien `app.js` en mémoire avec la nouvelle page, et les nouveaux réglages ne font rien.
+
 ## Utilisation
 
 1. Ouvrez l’adresse de l’outil dans **Chrome**, **Edge** ou **Safari** (versions récentes).
-2. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
-3. Remplissez le titre et, si vous voulez, le sous-titre. Réglez au besoin la durée du titre (4 secondes par défaut). Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
-4. Choisissez le style, la couleur et le rythme. À chaque modification, l’aperçu repart du début et se lance tout seul ; le bouton lecture permet de le revoir.
-5. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
+2. Choisissez le format : story ou réel (9:16), ou publication (4:5). Le cadre de recadrage suit ce format.
+3. Déposez les vidéos ou les photos de l’évènement. L’analyse prend quelques secondes par vidéo.
+4. Remplissez le titre et, si vous voulez, le sous-titre. Réglez au besoin la durée du titre (4 secondes par défaut). Laissez cochée « Ajouter un écran de fin » pour terminer sur le logo et un message.
+5. Choisissez le style, la couleur et le rythme. À chaque modification, l’aperçu repart du début et se lance tout seul ; le bouton lecture permet de le revoir.
+6. Cliquez sur **Créer la vidéo**, puis **Télécharger** (ordinateur) ou **Partager vers Instagram** (téléphone).
 
 ### Conseils
 

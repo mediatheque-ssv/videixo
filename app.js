@@ -38,9 +38,10 @@ const STYLES = {
 const TRANSITIONS = {
   court: { label: 'Fondus courts', dur: 0.3, clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, kb: 0.05 },
   glisse: { label: 'Glissés', dur: 0.32, clipDur: { rapide: 1.3, moyen: 1.9, pose: 2.7 }, kb: 0.07 },
-  lent: { label: 'Fondus lents', dur: 0.7, clipDur: { rapide: 2.2, moyen: 3.0, pose: 4.0 }, kb: 0.05 },
+  lent: { label: 'Fondus lents', dur: 1.0, clipDur: { rapide: 2.4, moyen: 3.2, pose: 4.2 }, kb: 0.05 },
 };
-const DYN_TRANSITIONS = ['whip', 'zoom', 'push', 'whipR'];
+// Transitions « Glissés », dans l’ordre : glissade vers la gauche, poussée vers le haut, zoom, glissade vers la droite.
+const DYN_TRANSITIONS = ['whip', 'push', 'zoom', 'whipR'];
 
 function transId() {
   return state.trans !== 'auto' && TRANSITIONS[state.trans] ? state.trans : STYLES[state.style].trans;
@@ -353,7 +354,7 @@ function buildTimeline(forExport = false) {
     if (transId() !== 'glisse') kind = 'fade';
     else if (prev.type === 'intro') kind = 'uncover';
     else if (s.type === 'outro') kind = 'cover';
-    else kind = DYN_TRANSITIONS[s.idx % DYN_TRANSITIONS.length];
+    else kind = DYN_TRANSITIONS[Math.max(0, s.idx - 1) % DYN_TRANSITIONS.length];
     const td = Math.min(T.dur, prev.dur * 0.45, s.dur * 0.45);
     s.transIn = { kind, dur: td };
     s.start = prev.start + prev.dur - td;

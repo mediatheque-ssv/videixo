@@ -548,8 +548,16 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 <main class="layout">
   <div class="controls">
 
+    <section class="step" aria-labelledby="h-format">
+      <h2 id="h-format"><span class="stamp-num" aria-hidden="true">1</span>Le format</h2>
+      <div class="segmented" role="radiogroup" aria-labelledby="h-format">
+        <input class="choice-input" type="radio" name="format" id="fmt-story" value="story"><label class="seg" for="fmt-story">Story ou réel (9:16)</label>
+        <input class="choice-input" type="radio" name="format" id="fmt-post" value="post"><label class="seg" for="fmt-post">Publication (4:5)</label>
+      </div>
+    </section>
+
     <section class="step" aria-labelledby="h-clips">
-      <h2 id="h-clips"><span class="stamp-num" aria-hidden="true">1</span>Les vidéos et les photos</h2>
+      <h2 id="h-clips"><span class="stamp-num" aria-hidden="true">2</span>Les vidéos et les photos</h2>
       <label class="drop" id="drop" for="file-clips">
         <input type="file" id="file-clips" accept="video/*,image/*" multiple>
         <strong>Déposez vos vidéos ou vos photos ici</strong>
@@ -563,7 +571,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
     </section>
 
     <section class="step" aria-labelledby="h-texts">
-      <h2 id="h-texts"><span class="stamp-num" aria-hidden="true">2</span>Les textes</h2>
+      <h2 id="h-texts"><span class="stamp-num" aria-hidden="true">3</span>Les textes</h2>
       <div class="fields">
         <div class="field wide">
           <label for="f-title">Titre de l’évènement</label>
@@ -608,7 +616,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
     </section>
 
     <section class="step" aria-labelledby="h-look">
-      <h2 id="h-look"><span class="stamp-num" aria-hidden="true">3</span>Le rendu</h2>
+      <h2 id="h-look"><span class="stamp-num" aria-hidden="true">4</span>Le rendu</h2>
 
       <fieldset class="group">
         <legend>Style</legend>
@@ -660,14 +668,6 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
           <button type="button" class="btn btn-quiet" id="music-remove" hidden>Retirer</button>
         </div>
         <small>Musique libre de droits uniquement. Vous pouvez aussi en ajouter une dans Instagram au moment de publier.</small>
-      </fieldset>
-
-      <fieldset class="group">
-        <legend>Format</legend>
-        <div class="segmented">
-          <input class="choice-input" type="radio" name="format" id="fmt-story" value="story"><label class="seg" for="fmt-story">Story ou réel (9:16)</label>
-          <input class="choice-input" type="radio" name="format" id="fmt-post" value="post"><label class="seg" for="fmt-post">Publication (4:5)</label>
-        </div>
       </fieldset>
 
       <details class="advanced" id="advanced">
@@ -807,6 +807,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script src="lib/mediabunny.min.js"></script>
-<script src="app.js"></script>
+<!-- Changer le numéro ?v= à chaque mise à jour de app.js, pour que les navigateurs ne gardent pas l’ancien en mémoire. -->
+<script src="app.js?v=2026-11-25c"></script>
 </body>
 </html>
