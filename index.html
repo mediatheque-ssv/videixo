@@ -638,6 +638,12 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
         <div class="field wide">
           <label class="check"><input type="checkbox" id="f-endscreen"> <span>Ajouter un écran de fin, avec le logo et un message</span></label>
         </div>
+        <div class="field wide field-range" id="field-enddur">
+          <label for="f-enddur">Durée de l’écran de fin</label>
+          <output id="enddur-out" for="f-enddur">3 s</output>
+          <input type="range" id="f-enddur" min="2" max="8" step="0.5" value="3">
+          <small>Temps pendant lequel le logo et le message restent à l’écran à la fin de la vidéo.</small>
+        </div>
         <div class="field wide" id="field-end">
           <label for="f-end">Texte de fin</label>
           <input type="text" id="f-end" maxlength="70" autocomplete="off">
@@ -894,6 +900,6 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 
 <script src="lib/mediabunny.min.js"></script>
 <!-- Changer le numéro ?v= à chaque mise à jour de app.js, pour que les navigateurs ne gardent pas l’ancien en mémoire. -->
-<script src="app.js?v=2026-11-25e"></script>
+<script src="app.js?v=2026-11-25g"></script>
 </body>
 </html>

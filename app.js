@@ -25,11 +25,16 @@ const TITLE_DUR_DEFAULT = { charte: 4, doux: 4, dyn: 2.5 };
 const TITLE_DUR_MIN = 1.5;
 const TITLE_DUR_MAX = 8;
 
+// Durée de l’écran de fin proposée par défaut pour chaque style, et bornes du réglage (secondes).
+const END_DUR_DEFAULT = { charte: 3, doux: 3, dyn: 2.5 };
+const END_DUR_MIN = 2;
+const END_DUR_MAX = 8;
+
 // Styles : allure du titre, des légendes et de l’écran de fin.
 const STYLES = {
-  charte: { outroDur: 2.8, trans: 'court' },
-  dyn: { outroDur: 2.6, trans: 'glisse' },
-  doux: { outroDur: 3.0, trans: 'lent' },
+  charte: { trans: 'court' },
+  dyn: { trans: 'glisse' },
+  doux: { trans: 'lent' },
 };
 
 // Transitions entre les plans, avec la durée des plans pour chaque rythme et le léger zoom progressif (kb).
@@ -117,6 +122,8 @@ const state = {
   filter: 'none',
   // Durée d’affichage du titre au début, en secondes, pour chaque style.
   titleDurs: { ...TITLE_DUR_DEFAULT },
+  // Durée de l’écran de fin, en secondes, pour chaque style.
+  endDurs: { ...END_DUR_DEFAULT },
   // Projet enregistré en cours d’édition (null : montage pas encore enregistré).
   projectId: null,
   projectName: '',
@@ -165,6 +172,7 @@ for (const k of SAVED_FIELDS) DEFAULT_SETTINGS[k] = state[k];
 function applySettings(st) {
   for (const k of SAVED_FIELDS) state[k] = DEFAULT_SETTINGS[k];
   state.titleDurs = { ...TITLE_DUR_DEFAULT };
+  state.endDurs = { ...END_DUR_DEFAULT };
   for (const k of SAVED_FIELDS) {
     if (st[k] !== undefined && st[k] !== null) state[k] = st[k];
   }
@@ -179,17 +187,34 @@ function applySettings(st) {
       if (Number.isFinite(v)) state.titleDurs[k] = clamp(v, TITLE_DUR_MIN, TITLE_DUR_MAX);
     }
   }
+  if (st.endDurs && typeof st.endDurs === 'object') {
+    for (const k of Object.keys(END_DUR_DEFAULT)) {
+      const v = Number(st.endDurs[k]);
+      if (Number.isFinite(v)) state.endDurs[k] = clamp(v, END_DUR_MIN, END_DUR_MAX);
+    }
+  }
 }
 
 let saveTimer = 0;
 function saveSettings() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveSessionNow, 300);
+  saveTimer = setTimeout(() => { saveTimer = 0; saveSessionNow(); }, 300);
 }
+
+// Enregistre tout de suite ce qui attendait, quand la page passe en arrière-plan ou se ferme
+// (sur téléphone, on bascule souvent vers Instagram juste après un changement).
+function flushSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  saveSessionNow();
+}
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
 
 // Tout ce qui décrit le montage, sans les fichiers : réglages, plans, musique.
 function montageData() {
-  const settings = { titleDurs: { ...state.titleDurs } };
+  const settings = { titleDurs: { ...state.titleDurs }, endDurs: { ...state.endDurs } };
   for (const k of SAVED_FIELDS) settings[k] = state[k];
   const items = state.items.filter((i) => !i.removed && i.status !== 'error').map((i) => ({
     id: i.id, kind: i.kind, name: i.name, caption: i.caption || '',
@@ -517,7 +542,8 @@ function buildTimeline(forExport = false) {
   });
   // Aperçu sans vidéo : un fond gris tient la place des vidéos, comme sur les gabarits d’affiche.
   if (!forExport && !media.length) segs.push({ type: 'blank', dur: Math.max(2.4, wantedTitleDur + 0.4), idx: 0 });
-  if (state.endScreen && (endText || state.logo || handle)) segs.push({ type: 'outro', dur: S.outroDur });
+  const endDur = state.endDurs[state.style] || END_DUR_DEFAULT[state.style];
+  if (state.endScreen && (endText || state.logo || handle)) segs.push({ type: 'outro', dur: endDur });
   if (!segs.length) segs.push({ type: 'blank', dur: 2.4, idx: 0 });
 
   segs.forEach((s, i) => {
@@ -2981,7 +3007,7 @@ function syncColorInputs() {
 // le texte de fin, le compte Instagram et le logo ne servent que sur l’écran de fin.
 function updateColorGroup() {
   $('color-group').hidden = state.style === 'charte';
-  for (const id of ['field-end', 'field-handle', 'field-logo']) $(id).hidden = !state.endScreen;
+  for (const id of ['field-enddur', 'field-end', 'field-handle', 'field-logo']) $(id).hidden = !state.endScreen;
 }
 
 // Le curseur de durée du titre montre la valeur du style choisi.
@@ -2992,6 +3018,16 @@ function syncTitleDur() {
   r.max = String(TITLE_DUR_MAX);
   r.value = String(v);
   $('titledur-out').textContent = `${String(v).replace('.', ',')} s`;
+}
+
+// Le curseur de durée de l’écran de fin montre la valeur du style choisi.
+function syncEndDur() {
+  const v = state.endDurs[state.style] || END_DUR_DEFAULT[state.style];
+  const r = $('f-enddur');
+  r.min = String(END_DUR_MIN);
+  r.max = String(END_DUR_MAX);
+  r.value = String(v);
+  $('enddur-out').textContent = `${String(v).replace('.', ',')} s`;
 }
 
 // « Selon le style » indique quelles transitions le style donne ; le résumé du menu signale un réglage personnalisé.
@@ -3059,6 +3095,7 @@ function syncFormFromState() {
   $('f-title').value = state.title;
   $('f-sub').value = state.sub;
   syncTitleDur();
+  syncEndDur();
   $('f-end').value = state.endText;
   $('f-handle').value = state.handle;
   $('f-sound').checked = state.keepSound;
@@ -3091,6 +3128,12 @@ function initForm() {
     saveSettings();
     rebuild();
   });
+  $('f-enddur').addEventListener('input', (e) => {
+    state.endDurs[state.style] = clamp(parseFloat(e.target.value), END_DUR_MIN, END_DUR_MAX);
+    syncEndDur();
+    saveSettings();
+    rebuild();
+  });
   $('f-endscreen').addEventListener('change', (e) => {
     state.endScreen = e.target.checked;
     updateColorGroup();
@@ -3111,6 +3154,7 @@ function initForm() {
       renderClipList();
       updateColorGroup();
       syncTitleDur();
+      syncEndDur();
       syncTrans();
     });
   });

@@ -21,7 +21,7 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
   - **Médiathèque** (par défaut) : la charte graphique de la médiathèque, voir plus bas ;
   - **Dynamique** : coupes rapides, gros titre, transitions glissées ;
   - **Doux** : fondus enchaînés, titre en italique.
-- Titre et sous-titre facultatif (une date, un lieu, un public…) au début, avec une durée d’affichage réglable, légende facultative sur chaque plan, et un écran de fin avec le logo, un message et le compte Instagram (activé par défaut, peut être décoché).
+- Titre et sous-titre facultatif (une date, un lieu, un public…) au début, avec une durée d’affichage réglable, légende facultative sur chaque plan, et un écran de fin avec le logo, un message et le compte Instagram (activé par défaut, peut être décoché, durée réglable).
 - Couleur au choix, trois rythmes, format 9:16 (story ou réel) ou 4:5 (publication).
 - Garde le son des vidéos et peut ajouter une musique (libre de droits).
 - Exporte un MP4 1080 × 1920 (H.264 + AAC), le format attendu par Instagram. Sur téléphone, le bouton « Partager » l’envoie directement à Instagram.
