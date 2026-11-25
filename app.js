@@ -13,7 +13,6 @@ const $ = (id) => document.getElementById(id);
    ========================================================================= */
 
 const FPS = 30;
-const STORE_KEY = 'videixo:v2';
 
 const FORMATS = {
   story: { W: 1080, H: 1920, safeTop: 250, safeBottom: 400 },
@@ -120,33 +119,168 @@ const state = {
   titleDurs: { ...TITLE_DUR_DEFAULT },
 };
 
+/* ---------- Mémoire de la séance ----------
+   Tant que l’onglet reste ouvert, tout est gardé, même si la page se recharge (fréquent sur téléphone
+   quand on revient d’Instagram ou de la galerie) : réglages et textes dans sessionStorage, fichiers
+   dans IndexedDB. Un nouvel onglet (l’appli fermée puis rouverte) repart des réglages par défaut,
+   et les fichiers des séances terminées sont effacés. */
+
+const SID_KEY = 'videixo:sid';
+const SESSION_KEY = 'videixo:session';
+const SESSION_IDLE_MS = 10 * 60 * 1000;
+const SAVED_FIELDS = ['title', 'sub', 'endText', 'handle', 'style', 'trans', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen', 'filter'];
+
+const session = { id: null, restored: null, ready: false };
+const newSessionId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+// Reprend la séance de cet onglet après un rechargement, ou en démarre une nouvelle.
 function loadSettings() {
+  // Les versions précédentes gardaient des réglages d’une fois sur l’autre : on les efface.
+  try { localStorage.removeItem('videixo:v1'); localStorage.removeItem('videixo:v2'); } catch (e) { /* rien */ }
+  let saved = null;
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen', 'filter', 'trans']) {
-      if (s[k] !== undefined && s[k] !== null) state[k] = s[k];
+    session.id = sessionStorage.getItem(SID_KEY);
+    if (session.id) saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+    else { session.id = newSessionId(); sessionStorage.setItem(SID_KEY, session.id); }
+  } catch (e) { session.id = session.id || newSessionId(); }
+  if (!saved || typeof saved !== 'object') return;
+  session.restored = saved;
+  const st = saved.settings || {};
+  for (const k of SAVED_FIELDS) {
+    if (st[k] !== undefined && st[k] !== null) state[k] = st[k];
+  }
+  if (!STYLES[state.style]) state.style = 'charte';
+  if (!FILTERS.some((f) => f.id === state.filter)) state.filter = 'none';
+  if (!FORMATS[state.format]) state.format = 'story';
+  if (!TRANSITIONS.court.clipDur[state.rythme]) state.rythme = 'moyen';
+  if (state.trans !== 'auto' && !TRANSITIONS[state.trans]) state.trans = 'auto';
+  if (st.titleDurs && typeof st.titleDurs === 'object') {
+    for (const k of Object.keys(TITLE_DUR_DEFAULT)) {
+      const v = Number(st.titleDurs[k]);
+      if (Number.isFinite(v)) state.titleDurs[k] = clamp(v, TITLE_DUR_MIN, TITLE_DUR_MAX);
     }
-    if (!STYLES[state.style]) state.style = 'charte';
-    if (!FILTERS.some((f) => f.id === state.filter)) state.filter = 'none';
-    if (!FORMATS[state.format]) state.format = 'story';
-    if (!TRANSITIONS.court.clipDur[state.rythme]) state.rythme = 'moyen';
-    if (state.trans !== 'auto' && !TRANSITIONS[state.trans]) state.trans = 'auto';
-    if (s.titleDurs && typeof s.titleDurs === 'object') {
-      for (const k of Object.keys(TITLE_DUR_DEFAULT)) {
-        const v = Number(s.titleDurs[k]);
-        if (Number.isFinite(v)) state.titleDurs[k] = clamp(v, TITLE_DUR_MIN, TITLE_DUR_MAX);
-      }
-    }
-  } catch (e) { /* stockage indisponible : on garde les valeurs par défaut */ }
+  }
 }
 
+let saveTimer = 0;
 function saveSettings() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSessionNow, 300);
+}
+
+function saveSessionNow() {
+  if (!session.ready) return; // pas avant la fin de la reprise, pour ne pas écraser la séance
+  const settings = { titleDurs: state.titleDurs };
+  for (const k of SAVED_FIELDS) settings[k] = state[k];
+  const items = state.items.filter((i) => !i.removed && i.status !== 'error').map((i) => ({
+    id: i.id, kind: i.kind, name: i.name, caption: i.caption || '',
+    start: i.start, end: i.end, userStart: !!i.userStart, speed: i.speed || 1, crop: i.crop || null,
+    // Résultat de l’analyse, pour ne pas la refaire après un rechargement.
+    samples: i.samples ? i.samples.map((x) => [+x.t.toFixed(2), +x.lum.toFixed(3), Math.round(x.sharp), x.motion === null ? null : +x.motion.toFixed(2)]) : null,
+  }));
+  const data = { settings, items, music: state.music ? { name: state.music.name } : null };
   try {
-    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter, trans } = state;
-    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter, trans }));
-  } catch (e) { /* quota dépassé ou stockage bloqué : sans gravité */ }
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch (e) {
+    try { data.items.forEach((i) => { i.samples = null; }); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch (e2) { /* stockage plein */ }
+  }
+  touchSession();
+}
+
+let dbPromise = null;
+function openDb() {
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB indisponible')); return; }
+      const r = indexedDB.open('videixo', 1);
+      r.onupgradeneeded = () => {
+        const db = r.result;
+        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
+        if (!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions');
+      };
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    }).catch((e) => { console.warn('Stockage des fichiers indisponible', e); return null; });
+  }
+  return dbPromise;
+}
+
+// Une opération IndexedDB ; en cas d’échec (navigation privée, stockage plein), on continue sans.
+async function dbRun(storeName, mode, fn) {
+  const db = await openDb();
+  if (!db) return undefined;
+  return new Promise((resolve) => {
+    let result;
+    try {
+      const tx = db.transaction(storeName, mode);
+      const req = fn(tx.objectStore(storeName));
+      if (req) req.onsuccess = () => { result = req.result; };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => { console.warn('Stockage', tx.error); resolve(undefined); };
+      tx.onabort = () => resolve(undefined);
+    } catch (e) {
+      console.warn('Stockage', e);
+      resolve(undefined);
+    }
+  });
+}
+
+const fileKey = (name) => `${session.id}/${name}`;
+const storeFile = (name, file) => dbRun('files', 'readwrite', (st) => st.put(file, fileKey(name)));
+const forgetFile = (name) => dbRun('files', 'readwrite', (st) => st.delete(fileKey(name)));
+const readFile = (name) => dbRun('files', 'readonly', (st) => st.get(fileKey(name)));
+
+// Signale que la séance est toujours ouverte (pour ne pas effacer ses fichiers depuis un autre onglet).
+let lastTouch = 0;
+function touchSession() {
+  if (Date.now() - lastTouch < 15000) return;
+  lastTouch = Date.now();
+  dbRun('sessions', 'readwrite', (st) => st.put(Date.now(), session.id));
+}
+
+// Efface les fichiers des séances terminées : onglets fermés, ou sans nouvelles depuis 10 minutes.
+async function purgeOldSessions() {
+  const now = Date.now();
+  const live = new Set([session.id]);
+  await dbRun('sessions', 'readwrite', (st) => {
+    const req = st.openCursor();
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return;
+      if (now - c.value < SESSION_IDLE_MS) live.add(c.key);
+      else c.delete();
+      c.continue();
+    };
+    return null;
+  });
+  await dbRun('files', 'readwrite', (st) => {
+    const req = st.openCursor();
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return;
+      if (!live.has(String(c.key).split('/')[0])) c.delete();
+      c.continue();
+    };
+    return null;
+  });
+}
+
+// Remet les vidéos, les photos et la musique de la séance après un rechargement de la page.
+async function restoreSession() {
+  const saved = session.restored;
+  if (!saved) return 0;
+  let count = 0;
+  for (const m of Array.isArray(saved.items) ? saved.items : []) {
+    const file = await readFile(String(m.id));
+    if (!file) continue;
+    addItem(file, m);
+    count++;
+  }
+  if (saved.music) {
+    const f = await readFile('music');
+    if (f) setMusic(f, false);
+  }
+  return count;
 }
 
 /* =========================================================================
@@ -1180,18 +1314,41 @@ const HEVC_HELP = 'Ce navigateur ne sait pas lire cette vidéo (souvent une vid�
 function isVideoFile(f) { return f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv|3gp)$/i.test(f.name); }
 function isImageFile(f) { return f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|heic|heif)$/i.test(f.name); }
 
+// Ajoute un fichier à la liste. meta : réglages du plan, quand il est repris après un rechargement.
+function addItem(file, meta) {
+  const kind = meta ? meta.kind : (isVideoFile(file) ? 'video' : 'image');
+  const id = meta ? meta.id : nextId;
+  nextId = Math.max(nextId, id + 1);
+  const item = {
+    id, kind, file, name: meta ? meta.name : file.name,
+    caption: '', start: 0, userStart: false, ok: false, status: 'loading', progress: 0,
+  };
+  if (meta) {
+    item.caption = meta.caption || '';
+    item.speed = meta.speed || 1;
+    item.crop = meta.crop || null;
+    if (meta.userStart && meta.end > meta.start) {
+      item.userStart = true;
+      item.start = meta.start;
+      item.end = meta.end;
+    }
+    if (Array.isArray(meta.samples)) {
+      item.restoredSamples = meta.samples.map(([t, lum, sharp, motion]) => ({ t, lum, sharp, motion }));
+    }
+  } else {
+    storeFile(String(id), file);
+  }
+  state.items.push(item);
+  queue.push(item);
+  return item;
+}
+
 function addFiles(fileList) {
   const files = Array.from(fileList || []);
   let added = 0;
   for (const file of files) {
-    const video = isVideoFile(file);
-    if (!video && !isImageFile(file)) { toast(`« ${file.name} » n’est ni une vidéo ni une photo.`); continue; }
-    const item = {
-      id: nextId++, kind: video ? 'video' : 'image', file, name: file.name,
-      caption: '', start: 0, userStart: false, ok: false, status: 'loading', progress: 0,
-    };
-    state.items.push(item);
-    queue.push(item);
+    if (!isVideoFile(file) && !isImageFile(file)) { toast(`« ${file.name} » n’est ni une vidéo ni une photo.`); continue; }
+    addItem(file);
     added++;
   }
   if (!added) return;
@@ -1210,7 +1367,10 @@ function runQueue() {
       if (item.removed) continue;
       if (item.kind === 'video') {
         await probeVideo(item);
-        if (item.ok && !item.removed) await analyzeVideo(item);
+        if (item.ok && !item.removed) {
+          if (item.restoredSamples) finishAnalysis(item, item.restoredSamples);
+          else await analyzeVideo(item);
+        }
       } else {
         await loadImage(item);
       }
@@ -1247,7 +1407,7 @@ async function probeVideo(item) {
     $('video-bin').append(v);
     item.el = v;
 
-    item.start = Math.min(item.duration * 0.3, Math.max(0, item.duration - srcSpan(item)));
+    if (!item.userStart) item.start = Math.min(item.duration * 0.3, Math.max(0, item.duration - srcSpan(item)));
     item.ok = true;
     item.status = 'analyzing';
   } catch (e) {
@@ -1300,6 +1460,10 @@ async function analyzeVideo(item) {
   } catch (e) {
     console.warn('Analyse impossible, passage choisi par défaut', e);
   }
+  finishAnalysis(item, samples);
+}
+
+function finishAnalysis(item, samples) {
   item.samples = samples;
   item.status = 'ready';
   if (!item.userStart) item.start = bestStart(item, srcSpan(item));
@@ -1397,6 +1561,7 @@ async function loadImage(item) {
 
 function removeItem(item) {
   item.removed = true;
+  forgetFile(String(item.id));
   if (item.el) { item.el.pause(); URL.revokeObjectURL(item.el.src); item.el.remove(); }
   if (item.bitmap && item.bitmap.close) item.bitmap.close();
   state.items = state.items.filter((i) => i !== item);
@@ -1489,6 +1654,7 @@ function makeRow(item) {
       <button type="button" class="icon-btn" data-act="remove" aria-label="Retirer">${ICONS.remove}</button>
     </div>`;
   li.querySelector('.clip-name').textContent = item.name;
+  li.querySelector('input[type="text"]').value = item.caption || '';
   li.querySelector(`#speed-${item.id}`).addEventListener('change', (e) => setSpeed(item, e.target.value));
   const rStart = li.querySelector(`#start-${item.id}`);
   const rEnd = li.querySelector(`#end-${item.id}`);
@@ -1503,6 +1669,7 @@ function makeRow(item) {
   cap.addEventListener('input', () => {
     item.caption = cap.value;
     requestDraw();
+    saveSettings();
   });
   li.querySelector('.clip-actions').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
@@ -1940,6 +2107,7 @@ function rebuild() {
   updateSummary();
   drawFilterThumbs();
   requestDraw();
+  saveSettings();
 }
 
 function sizePreview() {
@@ -2525,6 +2693,15 @@ function syncTrans() {
   if (custom) $('advanced-badge').textContent = `Transitions : ${TRANSITIONS[state.trans].label.toLowerCase()}`;
 }
 
+function setMusic(file, isNew) {
+  if (state.music) { state.music.el.pause(); URL.revokeObjectURL(state.music.url); }
+  const url = URL.createObjectURL(file);
+  state.music = { file, name: file.name, url, el: new Audio(url), buffer: null };
+  if (isNew) { storeFile('music', file); saveSettings(); }
+  $('music-name').textContent = file.name;
+  $('music-remove').hidden = false;
+}
+
 function setRadio(name, value) {
   const r = document.querySelector(`input[name="${name}"][value="${value}"]`);
   if (r) r.checked = true;
@@ -2627,16 +2804,13 @@ function initForm() {
   $('f-music').addEventListener('change', (e) => {
     const file = e.target.files[0];
     e.target.value = '';
-    if (!file) return;
-    if (state.music) { state.music.el.pause(); URL.revokeObjectURL(state.music.url); }
-    const url = URL.createObjectURL(file);
-    state.music = { file, name: file.name, url, el: new Audio(url), buffer: null };
-    $('music-name').textContent = file.name;
-    $('music-remove').hidden = false;
+    if (file) setMusic(file, true);
   });
   $('music-remove').addEventListener('click', () => {
     if (state.music) { state.music.el.pause(); URL.revokeObjectURL(state.music.url); }
     state.music = null;
+    forgetFile('music');
+    saveSettings();
     $('music-name').textContent = '';
     $('music-remove').hidden = true;
   });
@@ -2707,8 +2881,19 @@ async function boot() {
       document.fonts.load(`400 100px ${FONT.charteText}`),
     ]);
   } catch (e) { /* polices de secours */ }
-  rebuild();
-  seekPreview(state.style === 'dyn' ? 1.2 : 1.8);
+  const restored = await restoreSession();
+  session.ready = true;
+  purgeOldSessions();
+  setInterval(touchSession, 30000);
+  if (restored) {
+    renderClipList();
+    rebuild();
+    runQueue().then(restartPreview);
+  } else {
+    rebuild();
+    seekPreview(state.style === 'dyn' ? 1.2 : 1.8);
+  }
+  saveSessionNow();
 }
 
 boot();

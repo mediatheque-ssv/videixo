@@ -25,7 +25,7 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
 - Couleur au choix, trois rythmes, format 9:16 (story ou réel) ou 4:5 (publication).
 - Garde le son des vidéos et peut ajouter une musique (libre de droits).
 - Exporte un MP4 1080 × 1920 (H.264 + AAC), le format attendu par Instagram. Sur téléphone, le bouton « Partager » l’envoie directement à Instagram.
-- Le logo, le compte, la couleur et les réglages sont mémorisés sur l’appareil pour les fois suivantes.
+- Tout est gardé tant que la page reste ouverte, même si elle se recharge (sur téléphone, quand on revient d’Instagram ou de la galerie) : textes, réglages, vidéos et photos importées. En fermant l’onglet puis en rouvrant l’appli, tout repart des réglages par défaut et les fichiers de la séance précédente sont effacés de l’appareil.
 
 ## Mettre l’outil en ligne avec GitHub Pages (une seule fois, 10 minutes)
 
