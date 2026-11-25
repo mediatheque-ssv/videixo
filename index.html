@@ -409,8 +409,30 @@ dialog.trim { width: min(760px, calc(100vw - 32px)); padding: 20px; }
 .trim-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
 .trim-top h3 { margin: 0; }
 dialog.trim .trim-name { margin: 2px 0 0; font-size: .9375rem; overflow-wrap: anywhere; }
-.trim-stage { overflow: hidden; border-radius: 12px; background: #000000; }
-.trim-stage video { display: block; width: 100%; height: min(52vh, 520px); object-fit: contain; background: #000000; }
+.trim-stage { position: relative; overflow: hidden; border-radius: 12px; background: #000000; }
+.trim-stage video, .trim-stage canvas { display: block; width: 100%; height: min(52vh, 520px); object-fit: contain; background: #000000; }
+.trim-stage.is-cropping { cursor: crosshair; touch-action: none; }
+/* Le cadre assombrit tout ce qui sera coupé, grâce à une ombre très étendue. */
+.crop-frame {
+  position: absolute;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .58);
+  cursor: move; touch-action: none;
+}
+.crop-frame:focus-visible { outline: 3px solid var(--lime); outline-offset: 0; }
+.crop-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(33.33% - .5px), rgba(255, 255, 255, .5) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px) calc(66.67% - .5px), rgba(255, 255, 255, .5) calc(66.67% - .5px) calc(66.67% + .5px), transparent calc(66.67% + .5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - .5px), rgba(255, 255, 255, .5) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px) calc(66.67% - .5px), rgba(255, 255, 255, .5) calc(66.67% - .5px) calc(66.67% + .5px), transparent calc(66.67% + .5px));
+}
+.crop-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
+.crop-label { font-weight: 700; }
+.crop-zoom { display: flex; flex: 1 1 220px; align-items: center; gap: 10px; }
+.crop-zoom label { font-weight: 700; font-size: .875rem; }
+.crop-zoom input { flex: 1; min-width: 0; accent-color: var(--stamp); }
+.crop-zoom output { min-width: 3.6em; text-align: right; color: var(--ink-soft); }
+dialog.trim .crop-hint { margin: 6px 0 0; font-size: .875rem; }
 .trim-bar { margin-top: 12px; }
 .range2-lg { height: 44px; }
 .range2-lg .range2-track { left: 13px; right: 13px; top: 19px; height: 6px; border-radius: 3px; }
@@ -441,7 +463,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 .trim-actions .trim-done:hover { color: var(--stamp-ink); }
 @media (max-width: 560px) {
   dialog.trim { padding: 16px; }
-  .trim-stage video { height: 40vh; }
+  .trim-stage video, .trim-stage canvas { height: 40vh; }
   .trim-actions .trim-done { width: 100%; justify-content: center; margin-left: 0; }
 }
 .result-video { display: block; width: auto; max-height: 52vh; margin: 0 auto 16px; border-radius: 12px; background: #000000; }
@@ -515,7 +537,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
       </label>
       <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
       <div class="list-tools" id="list-tools" hidden>
-        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster, ou cliquez sur la vignette pour le régler en grand. Vous pouvez aussi changer sa vitesse. Les photos sont animées par un léger zoom.</p>
+        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster, ou cliquez sur la vignette pour le régler en grand et recadrer l’image. Vous pouvez aussi changer sa vitesse. Les photos sont animées par un léger zoom.</p>
         <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
       </div>
     </section>
@@ -692,8 +714,25 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
     </button>
   </div>
-  <div class="trim-stage"><video id="trim-video" playsinline preload="auto"></video></div>
-  <div class="trim-bar">
+  <div class="trim-stage" id="trim-stage">
+    <video id="trim-video" playsinline preload="auto"></video>
+    <canvas id="trim-photo" hidden></canvas>
+    <div class="crop-frame" id="crop-frame" tabindex="0" role="group" aria-label="Cadre : déplacez-le à la souris, au doigt ou avec les flèches du clavier" hidden><span class="crop-grid" aria-hidden="true"></span></div>
+  </div>
+  <div class="crop-row">
+    <span class="crop-label" id="crop-label">Cadrage</span>
+    <div class="segmented" role="radiogroup" aria-labelledby="crop-label">
+      <input class="choice-input" type="radio" name="crop-mode" id="crop-auto" value="auto"><label class="seg" for="crop-auto">Automatique</label>
+      <input class="choice-input" type="radio" name="crop-mode" id="crop-custom" value="custom"><label class="seg" for="crop-custom">Recadrer</label>
+    </div>
+    <div class="crop-zoom" id="crop-zoom-box" hidden>
+      <label for="crop-zoom">Zoom</label>
+      <input type="range" id="crop-zoom" min="1" max="3" step="0.05" value="1">
+      <output class="num" id="crop-zoom-out" for="crop-zoom">100 %</output>
+    </div>
+  </div>
+  <p class="crop-hint" id="crop-hint" hidden>Faites glisser le cadre sur la partie de l’image à garder. Le cadre a le format de la vidéo finale.</p>
+  <div class="trim-bar video-only">
     <div class="range2 range2-lg" role="group" aria-label="Début et fin de l’extrait">
       <span class="range2-track" aria-hidden="true"><span class="range2-fill" id="trim-fill"></span><span class="trim-playhead" id="trim-playhead"></span></span>
       <input type="range" id="trim-start" min="0" max="1" step="0.1" value="0" aria-label="Début de l’extrait">
@@ -701,7 +740,7 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
     </div>
     <div class="trim-scale num" aria-hidden="true"><span>0:00</span><span id="trim-length">0:00</span></div>
   </div>
-  <div class="trim-points">
+  <div class="trim-points video-only">
     <div class="trim-point">
       <span class="trim-point-label">Début</span>
       <button type="button" class="nudge" data-which="start" data-step="-0.1" aria-label="Début 0,1 seconde plus tôt">−0,1 s</button>
@@ -715,14 +754,14 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
       <button type="button" class="nudge" data-which="end" data-step="0.1" aria-label="Fin 0,1 seconde plus tard">+0,1 s</button>
     </div>
   </div>
-  <p class="trim-summary" id="trim-summary"></p>
+  <p class="trim-summary video-only" id="trim-summary"></p>
   <div class="trim-actions">
-    <button type="button" class="btn" id="trim-play">
+    <button type="button" class="btn video-only" id="trim-play">
       <svg id="trim-ico-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
       <svg id="trim-ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
       <span id="trim-play-label">Lire l’extrait</span>
     </button>
-    <label class="trim-speed">Vitesse <select id="trim-speed"></select></label>
+    <label class="trim-speed video-only">Vitesse <select id="trim-speed"></select></label>
     <button type="button" class="link-btn" id="trim-auto" hidden>Revenir au choix automatique</button>
     <button type="button" class="btn trim-done" id="trim-done">Terminé</button>
   </div>

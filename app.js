@@ -489,7 +489,27 @@ function drawBlurredBackground(ctx, fr, W, H) {
 }
 
 function usesContain(item, W, H) {
-  return state.landscape === 'blur' && (item.w / item.h) > (W / H) * 1.35;
+  return !item.crop && state.landscape === 'blur' && (item.w / item.h) > (W / H) * 1.35;
+}
+
+// Cadrage choisi à la main : item.crop = { x, y, z }, centre du cadre (de 0 à 1 dans l’image d’origine)
+// et zoom (1 = le plus grand cadre au format de la vidéo qui tienne dans l’image).
+// Renvoie la zone de l’image à afficher, en pixels d’une image de taille iw × ih.
+function cropRect(crop, iw, ih, aspect) {
+  let bw, bh;
+  if (iw / ih > aspect) { bh = ih; bw = ih * aspect; } else { bw = iw; bh = iw / aspect; }
+  const sw = bw / crop.z, sh = bh / crop.z;
+  const sx = clamp(crop.x * iw - sw / 2, 0, iw - sw);
+  const sy = clamp(crop.y * ih - sh / 2, 0, ih - sh);
+  return { sx, sy, sw, sh };
+}
+
+// Ramène le centre du cadre là où le cadre tient entièrement dans l’image.
+function clampCrop(item) {
+  const F = FORMATS[state.format];
+  const r = cropRect(item.crop, item.w, item.h, F.W / F.H);
+  item.crop.x = (r.sx + r.sw / 2) / item.w;
+  item.crop.y = (r.sy + r.sh / 2) / item.h;
 }
 
 function fillBlend(ctx, W, H, op, color, alpha) {
@@ -553,7 +573,12 @@ function drawMediaSeg(ctx, tl, seg, lt, fr) {
   if (fr) {
     const isImage = item.kind === 'image';
     const zoom = 1 + tl.S.kb * (isImage ? 1.8 : 1) * (isImage ? p : easeOutCubic(p));
-    if (usesContain(item, W, H)) {
+    if (item.crop) {
+      // Cadre choisi à la main, avec le même léger zoom progressif que les autres plans.
+      const r = cropRect(item.crop, fr.w, fr.h, W / H);
+      const sw = r.sw / zoom, sh = r.sh / zoom;
+      ctx.drawImage(fr.src, r.sx + (r.sw - sw) / 2, r.sy + (r.sh - sh) / 2, sw, sh, 0, 0, W, H);
+    } else if (usesContain(item, W, H)) {
       drawBlurredBackground(ctx, fr, W, H);
       const s = Math.min(W / fr.w, H / fr.h) * zoom;
       const dw = fr.w * s, dh = fr.h * s;
@@ -1506,8 +1531,9 @@ function updateRow(item) {
   if (!li) return;
   li.classList.toggle('is-error', item.status === 'error');
   const meta = li.querySelector('.clip-meta');
-  if (item.kind === 'image') meta.textContent = 'Photo';
-  else if (item.ok) meta.innerHTML = `<span class="num">${fmtTime(item.duration)}</span>, ${item.w >= item.h ? 'horizontale' : 'verticale'}${item.at ? '' : ', sans son'}`;
+  const cropped = item.crop ? ', recadrée' : '';
+  if (item.kind === 'image') meta.textContent = `Photo${cropped}`;
+  else if (item.ok) meta.innerHTML = `<span class="num">${fmtTime(item.duration)}</span>, ${item.w >= item.h ? 'horizontale' : 'verticale'}${item.at ? '' : ', sans son'}${cropped}`;
   else meta.textContent = 'Vidéo';
   const ext = li.querySelector('.clip-extract');
   if (item.kind === 'video' && item.ok) {
@@ -1527,7 +1553,9 @@ function updateRow(item) {
   } else {
     ext.hidden = true;
   }
-  li.querySelector('.thumb-btn').disabled = !(item.kind === 'video' && item.ok);
+  const zoomBtn = li.querySelector('.thumb-btn');
+  zoomBtn.disabled = !item.ok;
+  zoomBtn.setAttribute('aria-label', item.kind === 'video' ? 'Agrandir la vidéo pour régler l’extrait et le cadrage' : 'Agrandir la photo pour la recadrer');
   const speedBox = li.querySelector('.clip-speed');
   speedBox.hidden = !(item.kind === 'video' && item.ok);
   if (!speedBox.hidden) {
@@ -1583,10 +1611,15 @@ async function drawThumb(item) {
       drawFilterThumbs();
       requestDraw();
     }
-    const s = Math.max(c.width / w, c.height / h);
     cx.fillStyle = '#000000';
     cx.fillRect(0, 0, c.width, c.height);
-    cx.drawImage(src, (c.width - w * s) / 2, (c.height - h * s) / 2, w * s, h * s);
+    if (item.crop) {
+      const r = cropRect(item.crop, w, h, c.width / c.height);
+      cx.drawImage(src, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
+    } else {
+      const s = Math.max(c.width / w, c.height / h);
+      cx.drawImage(src, (c.width - w * s) / 2, (c.height - h * s) / 2, w * s, h * s);
+    }
   } catch (e) {
     console.warn('Vignette impossible', e);
   }
@@ -1600,18 +1633,164 @@ const trim = { item: null, changed: false, playing: false, raf: 0 };
 const fmtSec = (x) => (Math.round(x * 10) / 10).toFixed(1).replace('.', ',');
 
 function openTrim(item) {
-  if (!item || item.kind !== 'video' || !item.ok) return;
+  if (!item || !item.ok) return;
   clearTimeout(restartTimer);
   if (pv.playing) pause();
   trim.item = item;
   trim.changed = false;
+  const isVideo = item.kind === 'video';
+  document.querySelectorAll('#trim-dlg .video-only').forEach((el) => { el.hidden = !isVideo; });
+  $('trim-title').textContent = isVideo ? 'Régler l’extrait et le cadrage' : 'Recadrer la photo';
   const v = $('trim-video');
-  v.muted = true;
-  v.src = item.el.src;
-  v.addEventListener('loadeddata', () => showTrimFrame('start'), { once: true });
+  const ph = $('trim-photo');
+  v.hidden = !isVideo;
+  ph.hidden = isVideo;
+  if (isVideo) {
+    v.muted = true;
+    v.src = item.el.src;
+    v.addEventListener('loadeddata', () => { showTrimFrame('start'); layoutCropFrame(); }, { once: true });
+    syncTrim();
+  } else {
+    $('trim-auto').hidden = true;
+    ph.width = item.bitmap.width;
+    ph.height = item.bitmap.height;
+    ph.getContext('2d').drawImage(item.bitmap, 0, 0);
+  }
   $('trim-name').textContent = item.name;
-  syncTrim();
+  syncCrop();
   $('trim-dlg').showModal();
+  requestAnimationFrame(layoutCropFrame);
+}
+
+/* ---------- Cadrage dans la fenêtre agrandie ---------- */
+
+// Position de l’image affichée dans la scène (la vidéo ou la photo est centrée, sans déformation).
+function trimMediaBox() {
+  const item = trim.item;
+  if (!item) return null;
+  const el = item.kind === 'video' ? $('trim-video') : $('trim-photo');
+  const iw = item.kind === 'video' ? el.videoWidth : el.width;
+  const ih = item.kind === 'video' ? el.videoHeight : el.height;
+  const bw = el.clientWidth, bh = el.clientHeight;
+  if (!iw || !ih || !bw || !bh) return null;
+  const k = Math.min(bw / iw, bh / ih);
+  return { x: el.offsetLeft + (bw - iw * k) / 2, y: el.offsetTop + (bh - ih * k) / 2, w: iw * k, h: ih * k, iw, ih };
+}
+
+function layoutCropFrame() {
+  const frame = $('crop-frame');
+  const item = trim.item;
+  const box = item && item.crop ? trimMediaBox() : null;
+  frame.hidden = !box;
+  $('trim-stage').classList.toggle('is-cropping', !!(item && item.crop));
+  if (!box) return;
+  const F = FORMATS[state.format];
+  const r = cropRect(item.crop, box.iw, box.ih, F.W / F.H);
+  const k = box.w / box.iw;
+  frame.style.left = `${box.x + r.sx * k}px`;
+  frame.style.top = `${box.y + r.sy * k}px`;
+  frame.style.width = `${r.sw * k}px`;
+  frame.style.height = `${r.sh * k}px`;
+}
+
+function syncCrop() {
+  const item = trim.item;
+  if (!item) return;
+  const custom = !!item.crop;
+  $('crop-auto').checked = !custom;
+  $('crop-custom').checked = custom;
+  $('crop-zoom-box').hidden = !custom;
+  $('crop-hint').hidden = !custom;
+  if (custom) {
+    $('crop-zoom').value = String(item.crop.z);
+    $('crop-zoom-out').textContent = `${Math.round(item.crop.z * 100)} %`;
+  }
+  layoutCropFrame();
+}
+
+function cropChanged() {
+  const item = trim.item;
+  if (item.crop) clampCrop(item);
+  trim.changed = true;
+  syncCrop();
+  updateRow(item);
+  rebuild();
+  scheduleThumb(item);
+}
+
+function initCrop() {
+  const stage = $('trim-stage');
+  const frame = $('crop-frame');
+  document.querySelectorAll('input[name="crop-mode"]').forEach((r) => r.addEventListener('change', () => {
+    const item = trim.item;
+    if (!item) return;
+    item.crop = r.value === 'custom' ? item.crop || { x: 0.5, y: 0.5, z: 1 } : null;
+    cropChanged();
+    if (item.crop) frame.focus();
+  }));
+  $('crop-zoom').addEventListener('input', (e) => {
+    if (!trim.item || !trim.item.crop) return;
+    trim.item.crop.z = clamp(parseFloat(e.target.value), 1, 3);
+    cropChanged();
+  });
+  // Glisser le cadre, ou cliquer ailleurs sur l’image pour l’y amener.
+  stage.addEventListener('pointerdown', (e) => {
+    const item = trim.item;
+    if (!item || !item.crop || e.button > 0) return;
+    const box = trimMediaBox();
+    if (!box) return;
+    e.preventDefault();
+    stage.setPointerCapture(e.pointerId);
+    if (!frame.contains(e.target)) {
+      const rect = stage.getBoundingClientRect();
+      item.crop.x = (e.clientX - rect.left - box.x) / box.w;
+      item.crop.y = (e.clientY - rect.top - box.y) / box.h;
+      cropChanged();
+    }
+    const start = { px: e.clientX, py: e.clientY, x: item.crop.x, y: item.crop.y };
+    const move = (ev) => {
+      item.crop.x = start.x + (ev.clientX - start.px) / box.w;
+      item.crop.y = start.y + (ev.clientY - start.py) / box.h;
+      cropChanged();
+    };
+    const up = () => {
+      stage.removeEventListener('pointermove', move);
+      stage.removeEventListener('pointerup', up);
+      stage.removeEventListener('pointercancel', up);
+    };
+    stage.addEventListener('pointermove', move);
+    stage.addEventListener('pointerup', up);
+    stage.addEventListener('pointercancel', up);
+  });
+  // Molette : zoom.
+  stage.addEventListener('wheel', (e) => {
+    const item = trim.item;
+    if (!item || !item.crop) return;
+    e.preventDefault();
+    item.crop.z = clamp(item.crop.z * (e.deltaY < 0 ? 1.08 : 1 / 1.08), 1, 3);
+    cropChanged();
+  }, { passive: false });
+  // Clavier : flèches pour déplacer (Maj pour aller plus vite), + et − pour zoomer.
+  frame.addEventListener('keydown', (e) => {
+    const item = trim.item;
+    if (!item || !item.crop) return;
+    const step = e.shiftKey ? 0.1 : 0.02;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+      item.crop.x += moves[e.key][0];
+      item.crop.y += moves[e.key][1];
+    } else if (e.key === '+' || e.key === '=') {
+      item.crop.z = clamp(item.crop.z * 1.1, 1, 3);
+    } else if (e.key === '-') {
+      item.crop.z = clamp(item.crop.z / 1.1, 1, 3);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    cropChanged();
+  });
+  window.addEventListener('resize', () => { if (trim.item) layoutCropFrame(); });
+  $('trim-video').addEventListener('loadedmetadata', layoutCropFrame);
 }
 
 function syncTrim() {
@@ -1688,6 +1867,7 @@ function playTrim() {
 }
 
 function initTrim() {
+  initCrop();
   $('trim-speed').innerHTML = SPEEDS.map((sp) => `<option value="${sp.value}">${sp.label}</option>`).join('');
   const changed = () => { trim.changed = true; syncTrim(); };
   $('trim-start').addEventListener('input', (e) => { setExtract(trim.item, 'start', parseFloat(e.target.value)); changed(); showTrimFrame('start'); });
@@ -1715,6 +1895,7 @@ function initTrim() {
     const item = trim.item;
     trim.item = null;
     if (trim.changed) restartPreview();
+    $('crop-frame').hidden = true;
     if (item && item.row) item.row.querySelector('.thumb-btn').focus();
   });
 }
@@ -2030,9 +2211,14 @@ function makeRunner(seg, tlx, N) {
   const item = seg.item;
   const { W, H } = tlx;
   const margin = 1 + tlx.S.kb + 0.03;
-  const need = usesContain(item, W, H)
-    ? Math.min(W / item.w, H / item.h) * margin
-    : Math.max(W / item.w, H / item.h) * margin;
+  let need;
+  if (item.crop) {
+    // Un cadre resserré demande plus de définition : on décode d’autant plus grand.
+    const base = cropRect({ x: 0.5, y: 0.5, z: 1 }, item.w, item.h, W / H);
+    need = (W / base.sw) * item.crop.z * margin;
+  } else {
+    need = usesContain(item, W, H) ? Math.min(W / item.w, H / item.h) * margin : Math.max(W / item.w, H / item.h) * margin;
+  }
   const s = Math.min(1, need);
   const width = Math.max(2, Math.round((item.w * s) / 2) * 2);
   const height = Math.max(2, Math.round((item.h * s) / 2) * 2);
