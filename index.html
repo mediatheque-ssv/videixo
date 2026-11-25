@@ -78,6 +78,41 @@ button, input, select { font: inherit; color: inherit; }
   letter-spacing: -0.01em;
 }
 .top p { margin: 8px 0 0; color: var(--ink-soft); max-width: 60ch; }
+
+/* Barre du projet en cours */
+.project-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  margin-top: 18px; padding: 10px 12px 10px 16px;
+  border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--sheet);
+}
+.project-current { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.project-name { font: 600 1.0625rem/1.3 var(--font-display); overflow-wrap: anywhere; }
+.project-name.is-none { color: var(--ink-soft); }
+.project-state { font-size: .8125rem; color: var(--ink-soft); }
+.project-state.is-dirty { color: var(--danger); font-weight: 700; }
+.project-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+dialog.projects { width: min(620px, calc(100vw - 32px)); }
+.project-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.project {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 14px; align-items: center;
+  padding: 10px; border: 1px solid var(--line); border-radius: 10px;
+}
+.project-thumb { width: 36px; height: 64px; border-radius: 4px; object-fit: cover; background: var(--screen); }
+.project-body { min-width: 0; }
+dialog .project-title { margin: 0; color: var(--ink); font-weight: 700; overflow-wrap: anywhere; }
+dialog .project-meta { margin: 2px 0 0; font-size: .8125rem; }
+.project-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.project-confirm { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: .875rem; font-weight: 700; color: var(--danger); }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: var(--sheet); border-color: var(--danger); }
+dialog .projects-note { margin: 14px 0 0; font-size: .8125rem; }
+dialog .save-status { min-height: 1.2em; margin: 10px 0; font-size: .875rem; }
+#save-form .field { margin-bottom: 4px; }
+@media (max-width: 560px) {
+  .project { grid-template-columns: auto minmax(0, 1fr); }
+  .project-actions { grid-column: 1 / -1; }
+}
 .brand { display: flex; align-items: center; gap: 16px; }
 .brand-logo { width: 64px; height: 64px; flex: none; display: block; }
 
@@ -543,6 +578,17 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
     <h1>Vidéixo</h1>
   </div>
   <p>Déposez les vidéos ou les photos de votre évènement : l’outil les enchaîne avec un titre et votre logo, et vous rend une vidéo prête pour Instagram.</p>
+  <div class="project-bar">
+    <div class="project-current">
+      <span class="project-name" id="project-name">Montage non enregistré</span>
+      <span class="project-state" id="project-state" hidden></span>
+    </div>
+    <div class="project-buttons">
+      <button type="button" class="btn" id="btn-save-project">Enregistrer le projet</button>
+      <button type="button" class="btn" id="btn-open-projects">Mes projets</button>
+      <button type="button" class="btn btn-quiet" id="btn-new-project">Nouveau projet</button>
+    </div>
+  </div>
 </header>
 
 <main class="layout">
@@ -740,6 +786,46 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
   </div>
 </dialog>
 
+<dialog id="save-dlg" aria-labelledby="save-title">
+  <form id="save-form" method="dialog">
+    <h3 id="save-title">Enregistrer le projet</h3>
+    <p>Le projet garde les vidéos, les photos, les textes et les réglages, pour le rouvrir plus tard sur cet appareil.</p>
+    <div class="field">
+      <label for="save-name">Nom du projet</label>
+      <input type="text" id="save-name" maxlength="80" autocomplete="off">
+    </div>
+    <p class="save-status" id="save-status" role="status"></p>
+    <div class="dlg-actions">
+      <button type="submit" class="primary" id="save-confirm">Enregistrer</button>
+      <button type="button" class="btn" id="save-copy" hidden>Enregistrer comme nouveau projet</button>
+      <button type="button" class="btn btn-quiet" id="save-cancel">Annuler</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="projects-dlg" class="projects" aria-labelledby="projects-title">
+  <div class="trim-top">
+    <h3 id="projects-title">Mes projets</h3>
+    <button type="button" class="icon-btn" id="projects-close" aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <p class="warn" id="projects-warn" hidden>Le montage en cours n’est pas enregistré : ouvrir un projet le remplacera.</p>
+  <p id="projects-empty" hidden>Aucun projet enregistré sur cet appareil. Utilisez « Enregistrer le projet » pour en garder un.</p>
+  <ul class="project-list" id="projects-list"></ul>
+  <p class="projects-note">Les projets sont gardés dans ce navigateur, sur cet appareil. <span id="projects-usage"></span></p>
+</dialog>
+
+<dialog id="new-dlg" aria-labelledby="new-title">
+  <h3 id="new-title">Commencer un nouveau projet ?</h3>
+  <p>Les vidéos, les photos et les textes du montage en cours seront retirés, et les réglages remis par défaut.</p>
+  <p class="warn" id="new-warn" hidden>Le montage en cours n’est pas enregistré.</p>
+  <div class="dlg-actions">
+    <button type="button" class="primary" id="new-confirm">Vider et recommencer</button>
+    <button type="button" class="btn btn-quiet" id="new-cancel">Annuler</button>
+  </div>
+</dialog>
+
 <dialog id="trim-dlg" class="trim" aria-labelledby="trim-title">
   <div class="trim-top">
     <div>
@@ -808,6 +894,6 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 
 <script src="lib/mediabunny.min.js"></script>
 <!-- Changer le numéro ?v= à chaque mise à jour de app.js, pour que les navigateurs ne gardent pas l’ancien en mémoire. -->
-<script src="app.js?v=2026-11-25d"></script>
+<script src="app.js?v=2026-11-25e"></script>
 </body>
 </html>

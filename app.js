@@ -117,6 +117,10 @@ const state = {
   filter: 'none',
   // Durée d’affichage du titre au début, en secondes, pour chaque style.
   titleDurs: { ...TITLE_DUR_DEFAULT },
+  // Projet enregistré en cours d’édition (null : montage pas encore enregistré).
+  projectId: null,
+  projectName: '',
+  dirty: false,
 };
 
 /* ---------- Mémoire de la séance ----------
@@ -145,7 +149,22 @@ function loadSettings() {
   } catch (e) { session.id = session.id || newSessionId(); }
   if (!saved || typeof saved !== 'object') return;
   session.restored = saved;
-  const st = saved.settings || {};
+  applySettings(saved.settings || {});
+  if (saved.project) {
+    state.projectId = saved.project.id || null;
+    state.projectName = saved.project.name || '';
+    state.dirty = !!saved.project.dirty;
+  }
+}
+
+// Valeurs par défaut des réglages, relevées au chargement de la page.
+const DEFAULT_SETTINGS = {};
+for (const k of SAVED_FIELDS) DEFAULT_SETTINGS[k] = state[k];
+
+// Remet les réglages par défaut puis applique ceux donnés (st peut être vide).
+function applySettings(st) {
+  for (const k of SAVED_FIELDS) state[k] = DEFAULT_SETTINGS[k];
+  state.titleDurs = { ...TITLE_DUR_DEFAULT };
   for (const k of SAVED_FIELDS) {
     if (st[k] !== undefined && st[k] !== null) state[k] = st[k];
   }
@@ -168,17 +187,26 @@ function saveSettings() {
   saveTimer = setTimeout(saveSessionNow, 300);
 }
 
-function saveSessionNow() {
-  if (!session.ready) return; // pas avant la fin de la reprise, pour ne pas écraser la séance
-  const settings = { titleDurs: state.titleDurs };
+// Tout ce qui décrit le montage, sans les fichiers : réglages, plans, musique.
+function montageData() {
+  const settings = { titleDurs: { ...state.titleDurs } };
   for (const k of SAVED_FIELDS) settings[k] = state[k];
   const items = state.items.filter((i) => !i.removed && i.status !== 'error').map((i) => ({
     id: i.id, kind: i.kind, name: i.name, caption: i.caption || '',
     start: i.start, end: i.end, userStart: !!i.userStart, speed: i.speed || 1, crop: i.crop || null,
-    // Résultat de l’analyse, pour ne pas la refaire après un rechargement.
+    // Fichier déjà rangé dans un projet enregistré (sinon : dans les fichiers de la séance).
+    ref: i.fileRef || null,
+    // Résultat de l’analyse, pour ne pas la refaire.
     samples: i.samples ? i.samples.map((x) => [+x.t.toFixed(2), +x.lum.toFixed(3), Math.round(x.sharp), x.motion === null ? null : +x.motion.toFixed(2)]) : null,
   }));
-  const data = { settings, items, music: state.music ? { name: state.music.name } : null };
+  const music = state.music ? { name: state.music.name, ref: state.music.ref || null } : null;
+  return { settings, items, music };
+}
+
+function saveSessionNow() {
+  if (!session.ready) return; // pas avant la fin de la reprise, pour ne pas écraser la séance
+  const data = montageData();
+  data.project = { id: state.projectId, name: state.projectName, dirty: state.dirty };
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
   } catch (e) {
@@ -192,11 +220,12 @@ function openDb() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) { reject(new Error('IndexedDB indisponible')); return; }
-      const r = indexedDB.open('videixo', 1);
+      const r = indexedDB.open('videixo', 2);
       r.onupgradeneeded = () => {
         const db = r.result;
-        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files');
-        if (!db.objectStoreNames.contains('sessions')) db.createObjectStore('sessions');
+        for (const name of ['files', 'sessions', 'projects', 'projectFiles']) {
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+        }
       };
       r.onsuccess = () => resolve(r.result);
       r.onerror = () => reject(r.error);
@@ -229,6 +258,16 @@ const fileKey = (name) => `${session.id}/${name}`;
 const storeFile = (name, file) => dbRun('files', 'readwrite', (st) => st.put(file, fileKey(name)));
 const forgetFile = (name) => dbRun('files', 'readwrite', (st) => st.delete(fileKey(name)));
 const readFile = (name) => dbRun('files', 'readonly', (st) => st.get(fileKey(name)));
+const readProjectFile = (key) => dbRun('projectFiles', 'readonly', (st) => st.get(key));
+
+// Fichier d’un plan : dans le projet enregistré s’il y en a un, sinon dans la séance.
+async function fileFor(meta, sessionName) {
+  if (meta && meta.ref) {
+    const f = await readProjectFile(meta.ref);
+    if (f) return f;
+  }
+  return sessionName ? readFile(sessionName) : undefined;
+}
 
 // Signale que la séance est toujours ouverte (pour ne pas effacer ses fichiers depuis un autre onglet).
 let lastTouch = 0;
@@ -271,14 +310,14 @@ async function restoreSession() {
   if (!saved) return 0;
   let count = 0;
   for (const m of Array.isArray(saved.items) ? saved.items : []) {
-    const file = await readFile(String(m.id));
+    const file = await fileFor(m, String(m.id));
     if (!file) continue;
     addItem(file, m);
     count++;
   }
   if (saved.music) {
-    const f = await readFile('music');
-    if (f) setMusic(f, false);
+    const f = await fileFor(saved.music, 'music');
+    if (f) setMusic(f, false, saved.music.ref);
   }
   return count;
 }
@@ -1324,6 +1363,7 @@ function addItem(file, meta) {
     caption: '', start: 0, userStart: false, ok: false, status: 'loading', progress: 0,
   };
   if (meta) {
+    item.fileRef = meta.ref || null;
     item.caption = meta.caption || '';
     item.speed = meta.speed || 1;
     item.crop = meta.crop || null;
@@ -1341,6 +1381,13 @@ function addItem(file, meta) {
   state.items.push(item);
   queue.push(item);
   return item;
+}
+
+function markDirty() {
+  if (state.dirty) return;
+  state.dirty = true;
+  updateProjectBar();
+  saveSettings();
 }
 
 function addFiles(fileList) {
@@ -1810,6 +1857,268 @@ async function drawThumb(item) {
 }
 
 /* =========================================================================
+   Projets enregistrés dans l’appli (sur cet appareil, dans ce navigateur)
+   Un projet garde les réglages, les textes, les plans et leurs fichiers, et la musique.
+   ========================================================================= */
+
+const projectFileKey = (pid, name) => `${pid}/${name}`;
+
+async function listProjects() {
+  const all = (await dbRun('projects', 'readonly', (st) => st.getAll())) || [];
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// Petite image du projet : la première vidéo ou photo, avec le filtre choisi.
+function projectThumb() {
+  try {
+    const c = makeCanvas(72, 128);
+    const cx = c.getContext('2d');
+    const fr = filterSource();
+    const s = Math.max(72 / fr.w, 128 / fr.h);
+    cx.drawImage(fr.src, (72 - fr.w * s) / 2, (128 - fr.h * s) / 2, fr.w * s, fr.h * s);
+    applyFilter(cx, 72, 128, state.filter);
+    return c.toDataURL('image/jpeg', 0.75);
+  } catch (e) {
+    return '';
+  }
+}
+
+async function saveProject(name, asNew) {
+  const pid = (!asNew && state.projectId) || newSessionId();
+  const keep = new Set();
+  const items = state.items.filter((i) => !i.removed && i.status !== 'error');
+  // Les fichiers ne sont copiés qu’une fois dans le projet ; ensuite, la séance s’y réfère.
+  for (const item of items) {
+    const key = projectFileKey(pid, item.id);
+    keep.add(key);
+    if (item.fileRef !== key) {
+      await dbRun('projectFiles', 'readwrite', (st) => st.put(item.file, key));
+      item.fileRef = key;
+      forgetFile(String(item.id));
+    }
+  }
+  if (state.music) {
+    const key = projectFileKey(pid, 'music');
+    keep.add(key);
+    if (state.music.ref !== key) {
+      await dbRun('projectFiles', 'readwrite', (st) => st.put(state.music.file, key));
+      state.music.ref = key;
+      forgetFile('music');
+    }
+  }
+  // Fichiers de plans retirés depuis le dernier enregistrement.
+  await dbRun('projectFiles', 'readwrite', (st) => {
+    const req = st.openCursor(IDBKeyRange.bound(`${pid}/`, `${pid}/￿`));
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return;
+      if (!keep.has(c.key)) c.delete();
+      c.continue();
+    };
+    return null;
+  });
+  const now = Date.now();
+  const previous = asNew ? null : await dbRun('projects', 'readonly', (st) => st.get(pid));
+  const project = {
+    id: pid, name, createdAt: previous ? previous.createdAt : now, updatedAt: now,
+    count: items.length, thumb: projectThumb(), data: montageData(),
+  };
+  const ok = await dbRun('projects', 'readwrite', (st) => st.put(project, pid));
+  if (ok === undefined && !(await dbRun('projects', 'readonly', (st) => st.get(pid)))) {
+    throw new UserError('Le projet n’a pas pu être enregistré : l’espace de stockage du navigateur est peut-être plein. Supprimez d’anciens projets, puis réessayez.');
+  }
+  state.projectId = pid;
+  state.projectName = name;
+  state.dirty = false;
+  updateProjectBar();
+  saveSessionNow();
+  // Demande au navigateur de ne pas effacer les projets pour faire de la place.
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* facultatif */ }
+}
+
+// Vide le montage (plans, musique) sans toucher aux réglages.
+function clearMontage() {
+  [...state.items].forEach(removeItem);
+  if (state.music) {
+    state.music.el.pause();
+    URL.revokeObjectURL(state.music.url);
+    state.music = null;
+    forgetFile('music');
+  }
+  $('music-name').textContent = '';
+  $('music-remove').hidden = true;
+}
+
+async function openProject(pid) {
+  const project = await dbRun('projects', 'readonly', (st) => st.get(pid));
+  if (!project) { toast('Ce projet est introuvable.'); return; }
+  pause();
+  clearMontage();
+  applySettings((project.data && project.data.settings) || {});
+  await syncFormFromState();
+  let missing = 0;
+  for (const m of (project.data && project.data.items) || []) {
+    const ref = m.ref || projectFileKey(pid, m.id);
+    const file = await readProjectFile(ref);
+    if (!file) { missing++; continue; }
+    addItem(file, { ...m, ref });
+  }
+  const music = project.data && project.data.music;
+  if (music) {
+    const ref = music.ref || projectFileKey(pid, 'music');
+    const f = await readProjectFile(ref);
+    if (f) setMusic(f, false, ref);
+  }
+  state.projectId = pid;
+  state.projectName = project.name;
+  state.dirty = false;
+  renderClipList();
+  rebuild();
+  updateProjectBar();
+  saveSessionNow();
+  restartPreview();
+  runQueue().then(restartPreview);
+  toast(missing ? `Projet « ${project.name} » ouvert, mais ${missing} fichier${missing > 1 ? 's' : ''} manquant${missing > 1 ? 's' : ''}.` : `Projet « ${project.name} » ouvert.`);
+}
+
+async function deleteProject(pid) {
+  // Si le projet supprimé est ouvert, ses fichiers repassent dans la séance pour ne pas les perdre.
+  if (state.projectId === pid) {
+    for (const item of state.items) {
+      if (item.fileRef && item.fileRef.startsWith(`${pid}/`)) { await storeFile(String(item.id), item.file); item.fileRef = null; }
+    }
+    if (state.music && state.music.ref) { await storeFile('music', state.music.file); state.music.ref = null; }
+    state.projectId = null;
+    state.projectName = '';
+    state.dirty = state.items.length > 0;
+    updateProjectBar();
+    saveSessionNow();
+  }
+  await dbRun('projectFiles', 'readwrite', (st) => st.delete(IDBKeyRange.bound(`${pid}/`, `${pid}/￿`)));
+  await dbRun('projects', 'readwrite', (st) => st.delete(pid));
+}
+
+function newProject() {
+  pause();
+  clearMontage();
+  applySettings({});
+  state.projectId = null;
+  state.projectName = '';
+  state.dirty = false;
+  syncFormFromState().then(() => {
+    rebuild();
+    updateProjectBar();
+    saveSessionNow();
+    seekPreview(state.style === 'dyn' ? 1.2 : 1.8);
+  });
+}
+
+function updateProjectBar() {
+  const has = !!state.projectId;
+  $('project-name').textContent = has ? state.projectName : 'Montage non enregistré';
+  $('project-name').classList.toggle('is-none', !has);
+  const st = $('project-state');
+  st.hidden = !has;
+  st.textContent = state.dirty ? 'Modifications non enregistrées' : 'Enregistré';
+  st.classList.toggle('is-dirty', state.dirty);
+}
+
+const fmtDate = (ms) => new Date(ms).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+async function renderProjectList() {
+  const list = $('projects-list');
+  const projects = await listProjects();
+  list.innerHTML = '';
+  $('projects-empty').hidden = projects.length > 0;
+  $('projects-warn').hidden = !(state.dirty && state.items.length > 0);
+  for (const p of projects) {
+    const li = document.createElement('li');
+    li.className = 'project';
+    li.innerHTML = `
+      <img class="project-thumb" alt="" width="36" height="64">
+      <div class="project-body">
+        <p class="project-title"></p>
+        <p class="project-meta"></p>
+      </div>
+      <div class="project-actions">
+        <button type="button" class="btn" data-act="open">Ouvrir</button>
+        <button type="button" class="btn btn-quiet" data-act="delete">Supprimer</button>
+      </div>
+      <div class="project-confirm" hidden>
+        <span>Supprimer ce projet et ses fichiers de l’appareil ?</span>
+        <button type="button" class="btn btn-danger" data-act="confirm">Supprimer</button>
+        <button type="button" class="btn btn-quiet" data-act="cancel">Annuler</button>
+      </div>`;
+    if (p.thumb) li.querySelector('img').src = p.thumb; else li.querySelector('img').hidden = true;
+    li.querySelector('.project-title').textContent = p.name;
+    li.querySelector('.project-meta').textContent = `Modifié le ${fmtDate(p.updatedAt)}, ${p.count} plan${p.count > 1 ? 's' : ''}${p.id === state.projectId ? ' (ouvert)' : ''}`;
+    li.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      const confirmBox = li.querySelector('.project-confirm');
+      if (act === 'open') { $('projects-dlg').close(); await openProject(p.id); }
+      else if (act === 'delete') { confirmBox.hidden = false; confirmBox.querySelector('[data-act="confirm"]').focus(); }
+      else if (act === 'cancel') { confirmBox.hidden = true; }
+      else if (act === 'confirm') { await deleteProject(p.id); toast(`Projet « ${p.name} » supprimé.`); renderProjectList(); }
+    });
+    list.append(li);
+  }
+  // Place occupée par les projets et la séance dans le navigateur.
+  try {
+    const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+    $('projects-usage').textContent = est && est.usage ? `Espace utilisé par Vidéixo sur cet appareil : ${Math.max(1, Math.round(est.usage / 1e6))} Mo.` : '';
+  } catch (e) { $('projects-usage').textContent = ''; }
+}
+
+function initProjects() {
+  updateProjectBar();
+  $('btn-save-project').addEventListener('click', () => {
+    if (!state.items.some((i) => i.ok)) { toast('Ajoutez au moins une vidéo ou une photo avant d’enregistrer le projet.'); return; }
+    const name = state.projectName || state.title.trim() || `Montage du ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+    $('save-name').value = name;
+    $('save-copy').hidden = !state.projectId;
+    $('save-confirm').textContent = state.projectId ? 'Enregistrer les modifications' : 'Enregistrer';
+    $('save-status').textContent = '';
+    $('save-dlg').showModal();
+    $('save-name').select();
+  });
+  const doSave = async (asNew) => {
+    const name = $('save-name').value.trim();
+    if (!name) { $('save-status').textContent = 'Donnez un nom au projet.'; $('save-name').focus(); return; }
+    $('save-status').textContent = 'Enregistrement…';
+    $('save-confirm').disabled = true;
+    $('save-copy').disabled = true;
+    try {
+      await saveProject(name, asNew);
+      $('save-dlg').close();
+      toast(`Projet « ${name} » enregistré.`);
+    } catch (e) {
+      console.error(e);
+      $('save-status').textContent = e instanceof UserError ? e.message : 'Le projet n’a pas pu être enregistré.';
+    } finally {
+      $('save-confirm').disabled = false;
+      $('save-copy').disabled = false;
+    }
+  };
+  $('save-form').addEventListener('submit', (e) => { e.preventDefault(); doSave(false); });
+  $('save-copy').addEventListener('click', () => doSave(true));
+  $('save-cancel').addEventListener('click', () => $('save-dlg').close());
+  $('btn-open-projects').addEventListener('click', async () => {
+    await renderProjectList();
+    $('projects-dlg').showModal();
+  });
+  $('projects-close').addEventListener('click', () => $('projects-dlg').close());
+  $('btn-new-project').addEventListener('click', () => {
+    if (!state.items.length && !state.title) { newProject(); return; }
+    $('new-warn').hidden = !(state.dirty && state.items.length > 0);
+    $('new-dlg').showModal();
+  });
+  $('new-confirm').addEventListener('click', () => { $('new-dlg').close(); newProject(); });
+  $('new-cancel').addEventListener('click', () => $('new-dlg').close());
+}
+
+/* =========================================================================
    Fenêtre de réglage de l’extrait : la vidéo en grand, le début et la fin à la poignée ou au dixième de seconde
    ========================================================================= */
 
@@ -2078,7 +2387,7 @@ function initTrim() {
     v.load();
     const item = trim.item;
     trim.item = null;
-    if (trim.changed) restartPreview();
+    if (trim.changed) { restartPreview(); markDirty(); }
     $('crop-frame').hidden = true;
     if (item && item.row) item.row.querySelector('.thumb-btn').focus();
   });
@@ -2693,10 +3002,10 @@ function syncTrans() {
   if (custom) $('advanced-badge').textContent = `Transitions : ${TRANSITIONS[state.trans].label.toLowerCase()}`;
 }
 
-function setMusic(file, isNew) {
+function setMusic(file, isNew, ref) {
   if (state.music) { state.music.el.pause(); URL.revokeObjectURL(state.music.url); }
   const url = URL.createObjectURL(file);
-  state.music = { file, name: file.name, url, el: new Audio(url), buffer: null };
+  state.music = { file, name: file.name, url, el: new Audio(url), buffer: null, ref: ref || null };
   if (isNew) { storeFile('music', file); saveSettings(); }
   $('music-name').textContent = file.name;
   $('music-remove').hidden = false;
@@ -2745,7 +3054,8 @@ async function onLogoFile(file) {
   }
 }
 
-function initForm() {
+// Met les champs de la page en accord avec les réglages (au démarrage et à l’ouverture d’un projet).
+function syncFormFromState() {
   $('f-title').value = state.title;
   $('f-sub').value = state.sub;
   syncTitleDur();
@@ -2761,12 +3071,17 @@ function initForm() {
   syncTrans();
   // Le menu s’ouvre tout seul si des réglages avancés ont été changés.
   $('advanced').open = state.trans !== 'auto';
-  buildSwatches();
-  buildFilters();
   setRadio('filter', state.filter);
   syncColorInputs();
-  setLogo(state.logoData === undefined ? DEFAULT_LOGO : state.logoData).then(rebuild);
   updateColorGroup();
+  return setLogo(state.logoData === undefined ? DEFAULT_LOGO : state.logoData);
+}
+
+function initForm() {
+  buildSwatches();
+  buildFilters();
+  syncFormFromState().then(rebuild);
+  initProjects();
 
   $('f-title').addEventListener('input', (e) => { state.title = e.target.value; rebuild(); });
   $('f-sub').addEventListener('input', (e) => { state.sub = e.target.value; rebuild(); });
@@ -2831,11 +3146,11 @@ function initForm() {
   // Tout changement dans la colonne des réglages (champ, case, choix, bouton, fichier) ramène l’aperçu au début.
   // Ces écouteurs sont posés sur le conteneur : ils passent après ceux de chaque champ, une fois le montage recalculé.
   const controls = document.querySelector('.controls');
-  controls.addEventListener('input', restartPreview);
-  controls.addEventListener('change', restartPreview);
+  controls.addEventListener('input', () => { restartPreview(); markDirty(); });
+  controls.addEventListener('change', () => { restartPreview(); markDirty(); });
   controls.addEventListener('click', (e) => {
     const b = e.target.closest('button:not(:disabled)');
-    if (b && !b.hasAttribute('data-noreset')) restartPreview();
+    if (b && !b.hasAttribute('data-noreset')) { restartPreview(); markDirty(); }
   });
   initTrim();
   $('scrub').addEventListener('input', (e) => seekPreview(parseFloat(e.target.value)));
