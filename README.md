@@ -12,6 +12,8 @@ Tout se passe dans le navigateur : les vidéos ne sont envoyées sur aucun serve
 
 - Accepte des vidéos, des photos, ou un mélange des deux, dans l’ordre de votre choix. Les photos sont animées par un léger zoom.
 - Choisit dans chaque vidéo le passage le plus net et le plus animé, en évitant les débuts tremblants et les plans sombres. Un curseur à deux poignées permet de régler le début et la fin de chaque extrait, et donc sa durée.
+- Un clic sur la vignette d’une vidéo l’ouvre en grand pour régler l’extrait précisément : image exacte du début et de la fin, boutons ±0,1 s, lecture de l’extrait.
+- Cinq filtres pour tout le montage : noir et blanc, rétro, cinéma, chaud, froid (les titres et le logo ne sont pas filtrés).
 - Vitesse réglable pour chaque vidéo : ×0,5 (ralenti), ×0,75, normale, ×1,5 ou ×2 (accéléré). Le son d’un plan ralenti ou accéléré est coupé, pour éviter une voix déformée.
 - Trois styles :
   - **Médiathèque** (par défaut) : la charte graphique de la médiathèque, voir plus bas ;

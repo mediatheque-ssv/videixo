@@ -54,6 +54,17 @@ const COLORS = [
 
 const DEFAULT_LOGO = 'assets/logo-mediatheque.png';
 
+// Filtres appliqués aux vidéos et aux photos (pas aux titres ni au logo).
+// Ils sont faits de simples aplats en mode de fusion : même rendu dans l’aperçu et la vidéo, sur tous les navigateurs.
+const FILTERS = [
+  { id: 'none', label: 'Aucun' },
+  { id: 'nb', label: 'Noir et blanc' },
+  { id: 'retro', label: 'Rétro' },
+  { id: 'cinema', label: 'Cinéma' },
+  { id: 'chaud', label: 'Chaud' },
+  { id: 'froid', label: 'Froid' },
+];
+
 // Exemple de titre montré dans l’aperçu tant qu’aucune vidéo n’est ajoutée (la date n’apparaît que si elle est saisie).
 const PLACEHOLDER = { title: 'Nuit de la lecture' };
 const DEFAULT_END = 'Merci d’être venu·es\u00a0!';
@@ -89,6 +100,7 @@ const state = {
   keepSound: true,
   format: 'story',
   endScreen: true,
+  filter: 'none',
   // Durée d’affichage du titre au début, en secondes, pour chaque style.
   titleDurs: { ...TITLE_DUR_DEFAULT },
 };
@@ -98,10 +110,11 @@ function loadSettings() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return;
     const s = JSON.parse(raw);
-    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen']) {
+    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen', 'filter']) {
       if (s[k] !== undefined && s[k] !== null) state[k] = s[k];
     }
     if (!STYLES[state.style]) state.style = 'charte';
+    if (!FILTERS.some((f) => f.id === state.filter)) state.filter = 'none';
     if (!FORMATS[state.format]) state.format = 'story';
     if (!STYLES.dyn.clipDur[state.rythme]) state.rythme = 'moyen';
     if (s.titleDurs && typeof s.titleDurs === 'object') {
@@ -115,8 +128,8 @@ function loadSettings() {
 
 function saveSettings() {
   try {
-    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs } = state;
-    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs }));
+    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter } = state;
+    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter }));
   } catch (e) { /* quota dépassé ou stockage bloqué : sans gravité */ }
 }
 
@@ -137,12 +150,11 @@ function fmtTime(s) {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 function fmtTimeTenths(s) {
-  s = Math.round(Math.max(0, s) * 10) / 10;
-  const m = Math.floor(s / 60);
-  const r = s - m * 60;
-  const whole = Math.floor(r);
-  const tenth = Math.floor((r - whole) * 10);
-  return `${m}:${String(whole).padStart(2, '0')},${tenth}`;
+  // Calcul en dixièmes entiers : 4,8 s reste « 0:04,8 » malgré les arrondis des nombres à virgule.
+  const tenths = Math.round(Math.max(0, s) * 10);
+  const m = Math.floor(tenths / 600);
+  const rest = tenths - m * 600;
+  return `${m}:${String(Math.floor(rest / 10)).padStart(2, '0')},${rest % 10}`;
 }
 
 function hexToRgb(hex) {
@@ -337,6 +349,7 @@ function buildTimeline(forExport = false) {
   return {
     segs, S, F, W: F.W, H: F.H,
     total: last.start + last.dur,
+    filter: state.filter,
     // Le titre posé sur les vidéos s’arrête au plus tard quand commence l’écran de fin.
     titleDur: Math.min(wantedTitleDur, mediaEnd),
     style: state.style,
@@ -479,6 +492,58 @@ function usesContain(item, W, H) {
   return state.landscape === 'blur' && (item.w / item.h) > (W / H) * 1.35;
 }
 
+function fillBlend(ctx, W, H, op, color, alpha) {
+  ctx.save();
+  ctx.globalCompositeOperation = op;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function vignette(ctx, W, H, strength) {
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.hypot(W, H) / 2);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${strength})`);
+  ctx.save();
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function applyFilter(ctx, W, H, id) {
+  switch (id) {
+    case 'nb':
+      fillBlend(ctx, W, H, 'saturation', '#808080', 1);
+      fillBlend(ctx, W, H, 'soft-light', '#000000', 0.3);
+      vignette(ctx, W, H, 0.3);
+      break;
+    case 'retro':
+      // Pellicule délavée : couleurs ternies, noirs levés et bruns, coins assombris.
+      fillBlend(ctx, W, H, 'saturation', '#808080', 0.55);
+      fillBlend(ctx, W, H, 'multiply', '#EBCB95', 0.6);
+      fillBlend(ctx, W, H, 'lighten', '#5A4332', 0.85);
+      vignette(ctx, W, H, 0.35);
+      break;
+    case 'cinema':
+      // Ombres bleu-vert, lumières orangées, contraste et vignettage.
+      fillBlend(ctx, W, H, 'saturation', '#808080', 0.3);
+      fillBlend(ctx, W, H, 'soft-light', '#004E66', 0.5);
+      fillBlend(ctx, W, H, 'soft-light', '#FFB066', 0.3);
+      vignette(ctx, W, H, 0.45);
+      break;
+    case 'chaud':
+      fillBlend(ctx, W, H, 'soft-light', '#FF8A2B', 0.45);
+      fillBlend(ctx, W, H, 'multiply', '#FFE7C2', 0.35);
+      break;
+    case 'froid':
+      fillBlend(ctx, W, H, 'soft-light', '#2F7BD0', 0.45);
+      fillBlend(ctx, W, H, 'multiply', '#E2EEFF', 0.35);
+      break;
+    default:
+  }
+}
+
 function drawMediaSeg(ctx, tl, seg, lt, fr) {
   const { W, H } = tl;
   const item = seg.item;
@@ -503,6 +568,7 @@ function drawMediaSeg(ctx, tl, seg, lt, fr) {
       }
       ctx.drawImage(fr.src, (W - dw) / 2 + panX * (dw - W) / 2, (H - dh) / 2, dw, dh);
     }
+    if (tl.filter !== 'none') applyFilter(ctx, W, H, tl.filter);
   }
   if (item.caption && item.caption.trim()) {
     if (tl.style === 'dyn') drawCaptionDyn(ctx, tl, item.caption.trim(), lt);
@@ -1305,20 +1371,59 @@ const ICONS = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  zoom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>',
 };
+
+// Règle le début ou la fin de l’extrait d’une vidéo (en secondes de la vidéo d’origine).
+// Les deux bornes ne se croisent pas : l’extrait dure au moins MIN_EXTRACT.
+function setExtract(item, which, value) {
+  const [a0, b0] = extractRange(item);
+  let a = which === 'start' ? value : a0;
+  let b = which === 'end' ? value : b0;
+  if (which === 'start') a = Math.min(a, b - MIN_EXTRACT);
+  else b = Math.max(b, a + MIN_EXTRACT);
+  a = clamp(a, 0, item.duration - MIN_EXTRACT);
+  b = clamp(b, a + MIN_EXTRACT, item.duration);
+  item.start = Math.round(a * 10) / 10;
+  item.end = Math.round(b * 10) / 10;
+  item.userStart = true;
+  updateRow(item);
+  rebuild();
+  scheduleThumb(item);
+}
+
+function setAutoExtract(item) {
+  item.userStart = false;
+  item.end = undefined;
+  item.start = item.samples ? bestStart(item, srcSpan(item)) : item.start;
+  updateRow(item);
+  rebuild();
+  scheduleThumb(item);
+}
+
+function setSpeed(item, value) {
+  item.speed = parseFloat(value) || 1;
+  updateRow(item);
+  rebuild();
+  scheduleThumb(item);
+}
 
 function makeRow(item) {
   const li = document.createElement('li');
   li.className = 'clip';
   li.innerHTML = `
     <span class="clip-num"></span>
-    <canvas class="thumb" width="108" height="192" aria-hidden="true"></canvas>
+    <button type="button" class="thumb-btn" data-act="zoom" data-noreset aria-label="Agrandir la vidéo pour régler l’extrait" disabled>
+      <canvas class="thumb" width="108" height="192" aria-hidden="true"></canvas>
+      <span class="thumb-zoom" aria-hidden="true">${ICONS.zoom}</span>
+    </button>
     <div class="clip-body">
       <p class="clip-name"></p>
       <p class="clip-meta"></p>
       <div class="clip-extract" hidden>
         <span class="extract-label" id="ext-${item.id}">Extrait</span>
         <output for="start-${item.id} end-${item.id}"></output>
+        <button type="button" class="link-btn" data-act="zoom" data-noreset>Agrandir</button>
         <div class="range2" role="group" aria-labelledby="ext-${item.id}">
           <span class="range2-track" aria-hidden="true"><span class="range2-fill"></span></span>
           <input type="range" id="start-${item.id}" min="0" max="1" step="0.1" value="0" aria-label="Début de l’extrait">
@@ -1342,41 +1447,16 @@ function makeRow(item) {
       <button type="button" class="icon-btn" data-act="remove" aria-label="Retirer">${ICONS.remove}</button>
     </div>`;
   li.querySelector('.clip-name').textContent = item.name;
-  li.querySelector(`#speed-${item.id}`).addEventListener('change', (e) => {
-    item.speed = parseFloat(e.target.value) || 1;
-    updateRow(item);
-    rebuild();
-    scheduleThumb(item);
-  });
+  li.querySelector(`#speed-${item.id}`).addEventListener('change', (e) => setSpeed(item, e.target.value));
   const rStart = li.querySelector(`#start-${item.id}`);
   const rEnd = li.querySelector(`#end-${item.id}`);
-  const onRange = (which) => {
-    const [a0, b0] = extractRange(item);
-    let a = which === 'start' ? parseFloat(rStart.value) : a0;
-    let b = which === 'end' ? parseFloat(rEnd.value) : b0;
-    // Les deux poignées ne se croisent pas : l’extrait dure au moins une demi-seconde.
-    if (which === 'start') a = Math.min(a, b - MIN_EXTRACT);
-    else b = Math.max(b, a + MIN_EXTRACT);
-    a = clamp(a, 0, item.duration - MIN_EXTRACT);
-    b = clamp(b, a + MIN_EXTRACT, item.duration);
-    item.start = Math.round(a * 10) / 10;
-    item.end = Math.round(b * 10) / 10;
-    item.userStart = true;
-    updateRow(item);
-    rebuild();
-    scheduleThumb(item);
-  };
-  rStart.addEventListener('input', () => onRange('start'));
-  rEnd.addEventListener('input', () => onRange('end'));
+  rStart.addEventListener('input', () => setExtract(item, 'start', parseFloat(rStart.value)));
+  rEnd.addEventListener('input', () => setExtract(item, 'end', parseFloat(rEnd.value)));
   li.querySelector('[data-act="auto"]').addEventListener('click', () => {
-    item.userStart = false;
-    item.end = undefined;
-    item.start = item.samples ? bestStart(item, srcSpan(item)) : item.start;
-    updateRow(item);
-    rebuild();
-    scheduleThumb(item);
+    setAutoExtract(item);
     rStart.focus();
   });
+  li.querySelectorAll('[data-act="zoom"]').forEach((b) => b.addEventListener('click', () => openTrim(item)));
   const cap = li.querySelector('input[type="text"]');
   cap.addEventListener('input', () => {
     item.caption = cap.value;
@@ -1447,6 +1527,7 @@ function updateRow(item) {
   } else {
     ext.hidden = true;
   }
+  li.querySelector('.thumb-btn').disabled = !(item.kind === 'video' && item.ok);
   const speedBox = li.querySelector('.clip-speed');
   speedBox.hidden = !(item.kind === 'video' && item.ok);
   if (!speedBox.hidden) {
@@ -1499,6 +1580,7 @@ async function drawThumb(item) {
       if (!wc || item.removed) return;
       src = wc.canvas; w = wc.canvas.width; h = wc.canvas.height;
       rememberFrame(item, src);
+      drawFilterThumbs();
       requestDraw();
     }
     const s = Math.max(c.width / w, c.height / h);
@@ -1508,6 +1590,133 @@ async function drawThumb(item) {
   } catch (e) {
     console.warn('Vignette impossible', e);
   }
+}
+
+/* =========================================================================
+   Fenêtre de réglage de l’extrait : la vidéo en grand, le début et la fin à la poignée ou au dixième de seconde
+   ========================================================================= */
+
+const trim = { item: null, changed: false, playing: false, raf: 0 };
+const fmtSec = (x) => (Math.round(x * 10) / 10).toFixed(1).replace('.', ',');
+
+function openTrim(item) {
+  if (!item || item.kind !== 'video' || !item.ok) return;
+  clearTimeout(restartTimer);
+  if (pv.playing) pause();
+  trim.item = item;
+  trim.changed = false;
+  const v = $('trim-video');
+  v.muted = true;
+  v.src = item.el.src;
+  v.addEventListener('loadeddata', () => showTrimFrame('start'), { once: true });
+  $('trim-name').textContent = item.name;
+  syncTrim();
+  $('trim-dlg').showModal();
+}
+
+function syncTrim() {
+  const item = trim.item;
+  if (!item) return;
+  const [a, b] = extractRange(item);
+  const max = Math.round(item.duration * 10) / 10;
+  for (const [id, val] of [['trim-start', a], ['trim-end', b]]) {
+    const r = $(id);
+    r.max = String(max);
+    r.value = String(Math.round(val * 10) / 10);
+  }
+  $('trim-fill').style.left = `${(a / item.duration) * 100}%`;
+  $('trim-fill').style.width = `${((b - a) / item.duration) * 100}%`;
+  $('trim-start-out').textContent = fmtTimeTenths(a);
+  $('trim-end-out').textContent = fmtTimeTenths(b);
+  $('trim-length').textContent = fmtTime(item.duration);
+  const sp = speedOf(item);
+  let summary = `Durée dans le montage : ${fmtSec((b - a) / sp)} s`;
+  if (sp !== 1) summary += ` (${fmtSec(b - a)} s de vidéo ${sp < 1 ? 'ralentie' : 'accélérée'}, son coupé)`;
+  $('trim-summary').textContent = summary;
+  $('trim-speed').value = String(sp);
+  $('trim-auto').hidden = !item.userStart;
+  updatePlayhead();
+}
+
+function updatePlayhead() {
+  if (!trim.item) return;
+  const v = $('trim-video');
+  $('trim-playhead').style.left = `${clamp(v.currentTime / trim.item.duration) * 100}%`;
+}
+
+// Affiche l’image exacte du début ou de la fin de l’extrait.
+function showTrimFrame(which) {
+  if (!trim.item) return;
+  stopTrimPlay();
+  const [a, b] = extractRange(trim.item);
+  $('trim-video').currentTime = which === 'end' ? Math.max(a, b - 0.04) : a;
+}
+
+function stopTrimPlay() {
+  $('trim-video').pause();
+  trim.playing = false;
+  cancelAnimationFrame(trim.raf);
+  $('trim-play-label').textContent = 'Lire l’extrait';
+  $('trim-ico-play').hidden = false;
+  $('trim-ico-pause').hidden = true;
+}
+
+// Lit l’extrait du début à la fin, à la vitesse choisie, puis s’arrête.
+function playTrim() {
+  const item = trim.item;
+  if (!item) return;
+  if (trim.playing) { stopTrimPlay(); return; }
+  const v = $('trim-video');
+  const [a] = extractRange(item);
+  const sp = speedOf(item);
+  v.playbackRate = sp;
+  v.muted = sp !== 1 || !item.at;
+  v.currentTime = a;
+  v.play().catch(() => {});
+  trim.playing = true;
+  $('trim-play-label').textContent = 'Pause';
+  $('trim-ico-play').hidden = true;
+  $('trim-ico-pause').hidden = false;
+  const tick = () => {
+    if (!trim.playing) return;
+    const [, b] = extractRange(item);
+    updatePlayhead();
+    if (v.currentTime >= b - 0.02 || v.ended) { stopTrimPlay(); return; }
+    trim.raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function initTrim() {
+  $('trim-speed').innerHTML = SPEEDS.map((sp) => `<option value="${sp.value}">${sp.label}</option>`).join('');
+  const changed = () => { trim.changed = true; syncTrim(); };
+  $('trim-start').addEventListener('input', (e) => { setExtract(trim.item, 'start', parseFloat(e.target.value)); changed(); showTrimFrame('start'); });
+  $('trim-end').addEventListener('input', (e) => { setExtract(trim.item, 'end', parseFloat(e.target.value)); changed(); showTrimFrame('end'); });
+  document.querySelector('.trim-points').addEventListener('click', (e) => {
+    const btn = e.target.closest('.nudge');
+    if (!btn || !trim.item) return;
+    const which = btn.dataset.which;
+    const [a, b] = extractRange(trim.item);
+    setExtract(trim.item, which, (which === 'start' ? a : b) + parseFloat(btn.dataset.step));
+    changed();
+    showTrimFrame(which);
+  });
+  $('trim-speed').addEventListener('change', (e) => { setSpeed(trim.item, e.target.value); changed(); stopTrimPlay(); });
+  $('trim-auto').addEventListener('click', () => { setAutoExtract(trim.item); changed(); showTrimFrame('start'); $('trim-start').focus(); });
+  $('trim-play').addEventListener('click', playTrim);
+  $('trim-done').addEventListener('click', () => $('trim-dlg').close());
+  $('trim-close').addEventListener('click', () => $('trim-dlg').close());
+  $('trim-video').addEventListener('seeked', updatePlayhead);
+  $('trim-dlg').addEventListener('close', () => {
+    stopTrimPlay();
+    const v = $('trim-video');
+    v.removeAttribute('src');
+    v.load();
+    const item = trim.item;
+    trim.item = null;
+    if (trim.changed) restartPreview();
+    if (item && item.row) item.row.querySelector('.thumb-btn').focus();
+  });
 }
 
 /* =========================================================================
@@ -1531,6 +1740,7 @@ function rebuild() {
   $('scrub').max = String(tl.total);
   sizePreview();
   updateSummary();
+  drawFilterThumbs();
   requestDraw();
 }
 
@@ -1688,7 +1898,7 @@ function updateSummary() {
 
   // Sur les styles où le titre passe sur les vidéos, il ne peut pas durer plus longtemps qu’elles.
   const wantedTitle = state.titleDurs[state.style] || TITLE_DUR_DEFAULT[state.style];
-  const capped = state.style !== 'dyn' && media.length > 0 && exportTl.titleDur < wantedTitle - 0.05;
+  const capped = state.style !== 'dyn' && media.length > 0 && !!exportTl.title && exportTl.titleDur < wantedTitle - 0.05;
   $('titledur-note').hidden = !capped;
   if (capped) {
     const secs = String(Math.round(exportTl.titleDur * 10) / 10).replace('.', ',');
@@ -1993,6 +2203,64 @@ async function startExport() {
    Formulaire
    ========================================================================= */
 
+function buildFilters() {
+  const box = $('filters');
+  box.innerHTML = '';
+  for (const f of FILTERS) {
+    const input = document.createElement('input');
+    input.type = 'radio'; input.name = 'filter'; input.id = `flt-${f.id}`; input.value = f.id; input.className = 'choice-input';
+    const label = document.createElement('label');
+    label.className = 'filter-card';
+    label.htmlFor = input.id;
+    const c = makeCanvas(90, 160);
+    c.dataset.filter = f.id;
+    c.setAttribute('aria-hidden', 'true');
+    const name = document.createElement('span');
+    name.textContent = f.label;
+    label.append(c, name);
+    box.append(input, label);
+  }
+  box.addEventListener('change', (e) => {
+    if (e.target.name !== 'filter') return;
+    state.filter = e.target.value;
+    saveSettings();
+    rebuild();
+  });
+}
+
+// Image d’exemple pour les vignettes tant qu’aucune vidéo ni photo n’est prête : ciel, soleil, colline.
+let sampleScene = null;
+function filterSource() {
+  const it = state.items.find((i) => i.ok && (i.kind === 'image' ? i.bitmap : i.lastFrame));
+  if (it) {
+    const src = it.kind === 'image' ? it.bitmap : it.lastFrame;
+    return { src, w: src.width, h: src.height };
+  }
+  if (!sampleScene) {
+    sampleScene = makeCanvas(90, 160);
+    const c = sampleScene.getContext('2d');
+    const sky = c.createLinearGradient(0, 0, 0, 160);
+    sky.addColorStop(0, '#5FA8D3');
+    sky.addColorStop(0.65, '#F6D58E');
+    c.fillStyle = sky; c.fillRect(0, 0, 90, 160);
+    c.fillStyle = '#F39C12'; c.beginPath(); c.arc(62, 70, 16, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#3A7D44'; c.beginPath(); c.ellipse(30, 160, 80, 52, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#C0392B'; c.fillRect(14, 102, 18, 22);
+  }
+  return { src: sampleScene, w: 90, h: 160 };
+}
+
+function drawFilterThumbs() {
+  const fr = filterSource();
+  document.querySelectorAll('#filters canvas').forEach((c) => {
+    const cx = c.getContext('2d');
+    const W = c.width, H = c.height;
+    const s = Math.max(W / fr.w, H / fr.h);
+    cx.drawImage(fr.src, (W - fr.w * s) / 2, (H - fr.h * s) / 2, fr.w * s, fr.h * s);
+    applyFilter(cx, W, H, c.dataset.filter);
+  });
+}
+
 function buildSwatches() {
   const box = $('swatches');
   box.innerHTML = '';
@@ -2102,6 +2370,8 @@ function initForm() {
   setRadio('landscape', state.landscape);
   setRadio('format', state.format);
   buildSwatches();
+  buildFilters();
+  setRadio('filter', state.filter);
   syncColorInputs();
   setLogo(state.logoData === undefined ? DEFAULT_LOGO : state.logoData).then(rebuild);
   updateColorGroup();
@@ -2173,7 +2443,11 @@ function initForm() {
   const controls = document.querySelector('.controls');
   controls.addEventListener('input', restartPreview);
   controls.addEventListener('change', restartPreview);
-  controls.addEventListener('click', (e) => { if (e.target.closest('button:not(:disabled)')) restartPreview(); });
+  controls.addEventListener('click', (e) => {
+    const b = e.target.closest('button:not(:disabled)');
+    if (b && !b.hasAttribute('data-noreset')) restartPreview();
+  });
+  initTrim();
   $('scrub').addEventListener('input', (e) => seekPreview(parseFloat(e.target.value)));
   $('opt-safe').addEventListener('change', requestDraw);
   $('btn-sound').addEventListener('click', () => {

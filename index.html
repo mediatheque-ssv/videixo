@@ -158,23 +158,34 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--screen);
   display: block;
 }
+.thumb-btn { position: relative; display: block; padding: 0; border: 0; border-radius: 6px; background: none; cursor: zoom-in; }
+.thumb-btn:disabled { cursor: default; }
+.thumb-zoom {
+  position: absolute; right: 4px; bottom: 4px;
+  display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(0, 0, 0, .62); color: #FFFFFF;
+}
+.thumb-zoom svg { width: 13px; height: 13px; }
+.thumb-btn:disabled .thumb-zoom { display: none; }
+.thumb-btn:not(:disabled):hover .thumb-zoom { background: var(--stamp); }
 .clip-body { display: grid; gap: 6px; min-width: 0; }
 .clip-name { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 .clip-meta { margin: 0; color: var(--ink-soft); font-size: .875rem; }
 /* Chiffres en Literata : le zéro barré d’Atkinson gêne la lecture des durées */
 .num { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; }
-.clip-extract { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; font-size: .875rem; }
+.clip-extract { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 2px 10px; font-size: .875rem; }
 .clip-extract output { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .extract-label { font-weight: 700; }
 .clip-speed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: .875rem; }
 .clip-speed label { font-weight: 700; }
-.clip-speed select {
+.clip-speed select, .trim-speed select {
   padding: 6px 10px;
   border: 1.5px solid var(--line); border-radius: 8px;
   background: var(--sheet);
   font-size: .875rem;
 }
-.clip-speed select:focus { border-color: var(--stamp); outline: 3px solid var(--stamp-tint); outline-offset: 0; }
+.clip-speed select:focus, .trim-speed select:focus { border-color: var(--stamp); outline: 3px solid var(--stamp-tint); outline-offset: 0; }
 .speed-note { color: var(--ink-soft); font-size: .8125rem; }
 /* Curseur à deux poignées : deux curseurs superposés dont seules les poignées captent le doigt ou la souris */
 .range2 { position: relative; grid-column: 1 / -1; height: 30px; }
@@ -284,7 +295,20 @@ input[type="text"]::placeholder { color: var(--ink-soft); opacity: .8; }
 .choice-input:checked + .style-card { border-color: var(--stamp); background: var(--stamp-tint); box-shadow: inset 0 0 0 1px var(--stamp); }
 .choice-input:focus-visible + .style-card,
 .choice-input:focus-visible + .seg,
-.choice-input:focus-visible + .swatch { outline: 3px solid var(--stamp); outline-offset: 2px; }
+.choice-input:focus-visible + .swatch,
+.choice-input:focus-visible + .filter-card { outline: 3px solid var(--stamp); outline-offset: 2px; }
+
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; }
+.filter-card {
+  display: grid; justify-items: center; gap: 6px;
+  padding: 8px 6px 10px;
+  border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--sheet);
+  font-size: .8125rem; font-weight: 700; text-align: center;
+  cursor: pointer;
+}
+.filter-card canvas { width: 54px; height: 96px; border-radius: 6px; background: var(--screen); display: block; }
+.choice-input:checked + .filter-card { border-color: var(--stamp); background: var(--stamp-tint); box-shadow: inset 0 0 0 1px var(--stamp); }
 
 .segmented { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg {
@@ -381,6 +405,45 @@ dialog h3 { margin: 0 0 6px; font: 600 1.375rem/1.25 var(--font-display); }
 dialog p { margin: 0 0 14px; color: var(--ink-soft); }
 .bar { height: 10px; border-radius: 999px; background: var(--stamp-tint); overflow: hidden; margin-block: 14px; }
 .bar i { display: block; height: 100%; width: 0; background: var(--stamp); transition: width .2s; }
+dialog.trim { width: min(760px, calc(100vw - 32px)); padding: 20px; }
+.trim-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.trim-top h3 { margin: 0; }
+dialog.trim .trim-name { margin: 2px 0 0; font-size: .9375rem; overflow-wrap: anywhere; }
+.trim-stage { overflow: hidden; border-radius: 12px; background: #000000; }
+.trim-stage video { display: block; width: 100%; height: min(52vh, 520px); object-fit: contain; background: #000000; }
+.trim-bar { margin-top: 12px; }
+.range2-lg { height: 44px; }
+.range2-lg .range2-track { left: 13px; right: 13px; top: 19px; height: 6px; border-radius: 3px; }
+.range2-lg input[type="range"] { height: 44px; }
+.range2-lg input[type="range"]::-webkit-slider-runnable-track { height: 44px; }
+.range2-lg input[type="range"]::-moz-range-track { height: 44px; }
+.range2-lg input[type="range"]::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: 9px; }
+.range2-lg input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+.trim-playhead { position: absolute; top: -12px; bottom: -12px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ink); pointer-events: none; }
+.trim-scale { display: flex; justify-content: space-between; padding-inline: 4px; color: var(--ink-soft); font-size: .8125rem; }
+.trim-points { display: flex; flex-wrap: wrap; gap: 10px 32px; margin-top: 10px; }
+.trim-point { display: flex; align-items: center; gap: 8px; }
+.trim-point-label { min-width: 3em; font-weight: 700; }
+.trim-point output { min-width: 4.6em; text-align: center; font-size: 1.0625rem; }
+.nudge {
+  padding: 6px 10px;
+  border: 1.5px solid var(--line); border-radius: 8px;
+  background: var(--sheet);
+  font: 600 .9375rem/1.2 var(--font-display); font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.nudge:hover { border-color: var(--stamp); color: var(--stamp); }
+dialog.trim .trim-summary { margin: 10px 0 0; }
+.trim-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 16px; }
+.trim-actions svg { width: 16px; height: 16px; }
+.trim-speed { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .875rem; }
+.trim-actions .trim-done { margin-left: auto; border-color: var(--stamp); background: var(--stamp); color: var(--stamp-ink); }
+.trim-actions .trim-done:hover { color: var(--stamp-ink); }
+@media (max-width: 560px) {
+  dialog.trim { padding: 16px; }
+  .trim-stage video { height: 40vh; }
+  .trim-actions .trim-done { width: 100%; justify-content: center; margin-left: 0; }
+}
 .result-video { display: block; width: auto; max-height: 52vh; margin: 0 auto 16px; border-radius: 12px; background: #000000; }
 .dlg-actions { display: grid; gap: 10px; }
 .dlg-actions .btn { justify-content: center; }
@@ -452,7 +515,7 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
       </label>
       <ol class="clips" id="clips" aria-label="Plans du montage, dans l’ordre"></ol>
       <div class="list-tools" id="list-tools" hidden>
-        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster, et changez sa vitesse si besoin. Les photos sont animées par un léger zoom.</p>
+        <p class="hint">Pour chaque vidéo, le passage le plus net et le plus animé est choisi pour vous. Déplacez le début ou la fin de l’extrait pour l’ajuster, ou cliquez sur la vignette pour le régler en grand. Vous pouvez aussi changer sa vitesse. Les photos sont animées par un léger zoom.</p>
         <button type="button" class="btn btn-quiet" id="btn-clear">Tout retirer</button>
       </div>
     </section>
@@ -520,6 +583,12 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
       <fieldset class="group" id="color-group">
         <legend>Couleur</legend>
         <div class="swatches" id="swatches"></div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Filtre</legend>
+        <div class="filters" id="filters"></div>
+        <small>Appliqué aux vidéos et aux photos, pas aux titres ni au logo.</small>
       </fieldset>
 
       <fieldset class="group">
@@ -610,6 +679,52 @@ dialog p { margin: 0 0 14px; color: var(--ink-soft); }
     <h3>La vidéo n’a pas pu être créée</h3>
     <p id="dlg-error-msg"></p>
     <div class="dlg-actions"><button type="button" class="btn" id="btn-close-err">Fermer</button></div>
+  </div>
+</dialog>
+
+<dialog id="trim-dlg" class="trim" aria-labelledby="trim-title">
+  <div class="trim-top">
+    <div>
+      <h3 id="trim-title">Régler l’extrait</h3>
+      <p class="trim-name" id="trim-name"></p>
+    </div>
+    <button type="button" class="icon-btn" id="trim-close" aria-label="Fermer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <div class="trim-stage"><video id="trim-video" playsinline preload="auto"></video></div>
+  <div class="trim-bar">
+    <div class="range2 range2-lg" role="group" aria-label="Début et fin de l’extrait">
+      <span class="range2-track" aria-hidden="true"><span class="range2-fill" id="trim-fill"></span><span class="trim-playhead" id="trim-playhead"></span></span>
+      <input type="range" id="trim-start" min="0" max="1" step="0.1" value="0" aria-label="Début de l’extrait">
+      <input type="range" id="trim-end" min="0" max="1" step="0.1" value="1" aria-label="Fin de l’extrait">
+    </div>
+    <div class="trim-scale num" aria-hidden="true"><span>0:00</span><span id="trim-length">0:00</span></div>
+  </div>
+  <div class="trim-points">
+    <div class="trim-point">
+      <span class="trim-point-label">Début</span>
+      <button type="button" class="nudge" data-which="start" data-step="-0.1" aria-label="Début 0,1 seconde plus tôt">−0,1 s</button>
+      <output class="num" id="trim-start-out" for="trim-start">0:00,0</output>
+      <button type="button" class="nudge" data-which="start" data-step="0.1" aria-label="Début 0,1 seconde plus tard">+0,1 s</button>
+    </div>
+    <div class="trim-point">
+      <span class="trim-point-label">Fin</span>
+      <button type="button" class="nudge" data-which="end" data-step="-0.1" aria-label="Fin 0,1 seconde plus tôt">−0,1 s</button>
+      <output class="num" id="trim-end-out" for="trim-end">0:00,0</output>
+      <button type="button" class="nudge" data-which="end" data-step="0.1" aria-label="Fin 0,1 seconde plus tard">+0,1 s</button>
+    </div>
+  </div>
+  <p class="trim-summary" id="trim-summary"></p>
+  <div class="trim-actions">
+    <button type="button" class="btn" id="trim-play">
+      <svg id="trim-ico-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
+      <svg id="trim-ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+      <span id="trim-play-label">Lire l’extrait</span>
+    </button>
+    <label class="trim-speed">Vitesse <select id="trim-speed"></select></label>
+    <button type="button" class="link-btn" id="trim-auto" hidden>Revenir au choix automatique</button>
+    <button type="button" class="btn trim-done" id="trim-done">Terminé</button>
   </div>
 </dialog>
 
