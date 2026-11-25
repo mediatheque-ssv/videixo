@@ -2223,6 +2223,8 @@ function syncCrop() {
   if (custom) {
     $('crop-zoom').value = String(item.crop.z);
     $('crop-zoom-out').textContent = `${Math.round(item.crop.z * 100)} %`;
+    document.querySelector('.zoom-step[data-zoom^="-"]').disabled = item.crop.z <= 1.001;
+    document.querySelector('.zoom-step:not([data-zoom^="-"])').disabled = item.crop.z >= 2.999;
   }
   layoutCropFrame();
 }
@@ -2247,6 +2249,13 @@ function initCrop() {
     cropChanged();
     if (item.crop) frame.focus();
   }));
+  // Boutons − et + : zoom par pas de 10 %.
+  $('crop-zoom-box').addEventListener('click', (e) => {
+    const btn = e.target.closest('.zoom-step');
+    if (!btn || !trim.item || !trim.item.crop) return;
+    trim.item.crop.z = clamp(Math.round((trim.item.crop.z + parseFloat(btn.dataset.zoom)) * 100) / 100, 1, 3);
+    cropChanged();
+  });
   $('crop-zoom').addEventListener('input', (e) => {
     if (!trim.item || !trim.item.crop) return;
     trim.item.crop.z = clamp(parseFloat(e.target.value), 1, 3);

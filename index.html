@@ -487,6 +487,8 @@ dialog.trim .trim-name { margin: 2px 0 0; font-size: .9375rem; overflow-wrap: an
 .crop-zoom label { font-weight: 700; font-size: .875rem; }
 .crop-zoom input { flex: 1; min-width: 0; accent-color: var(--stamp); }
 .crop-zoom output { min-width: 3.6em; text-align: right; color: var(--ink-soft); }
+.zoom-step { width: 36px; padding: 4px 0; font-size: 1.25rem; line-height: 1.2; text-align: center; }
+.zoom-step:disabled { opacity: .4; cursor: default; color: inherit; border-color: var(--line); }
 dialog.trim .crop-hint { margin: 6px 0 0; font-size: .875rem; }
 .trim-bar { margin-top: 12px; }
 .range2-lg { height: 44px; }
@@ -855,7 +857,9 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
     </div>
     <div class="crop-zoom" id="crop-zoom-box" hidden>
       <label for="crop-zoom">Zoom</label>
+      <button type="button" class="nudge zoom-step" data-zoom="-0.1" aria-label="Dézoomer de 10 %">−</button>
       <input type="range" id="crop-zoom" min="1" max="3" step="0.05" value="1">
+      <button type="button" class="nudge zoom-step" data-zoom="0.1" aria-label="Zoomer de 10 %">+</button>
       <output class="num" id="crop-zoom-out" for="crop-zoom">100 %</output>
     </div>
   </div>
@@ -900,6 +904,6 @@ dialog.trim .trim-summary { margin: 10px 0 0; }
 
 <script src="lib/mediabunny.min.js"></script>
 <!-- Changer le numéro ?v= à chaque mise à jour de app.js, pour que les navigateurs ne gardent pas l’ancien en mémoire. -->
-<script src="app.js?v=2026-11-25g"></script>
+<script src="app.js?v=2026-11-25h"></script>
 </body>
 </html>
