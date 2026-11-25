@@ -26,12 +26,25 @@ const TITLE_DUR_DEFAULT = { charte: 4, doux: 4, dyn: 2.5 };
 const TITLE_DUR_MIN = 1.5;
 const TITLE_DUR_MAX = 8;
 
+// Styles : allure du titre, des légendes et de l’écran de fin.
 const STYLES = {
-  charte: { clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, trans: 0.3, titleDur: 3.2, outroDur: 2.8, kb: 0.05 },
-  dyn: { clipDur: { rapide: 1.3, moyen: 1.9, pose: 2.7 }, trans: 0.32, introDur: 1.7, outroDur: 2.6, kb: 0.07 },
-  doux: { clipDur: { rapide: 2.2, moyen: 3.0, pose: 4.0 }, trans: 0.7, titleDur: 2.8, outroDur: 3.0, kb: 0.05 },
+  charte: { outroDur: 2.8, trans: 'court' },
+  dyn: { outroDur: 2.6, trans: 'glisse' },
+  doux: { outroDur: 3.0, trans: 'lent' },
+};
+
+// Transitions entre les plans, avec la durée des plans pour chaque rythme et le léger zoom progressif (kb).
+// Par défaut, elles suivent le style (STYLES[…].trans) ; « Réglages avancés » permet d’en choisir d’autres.
+const TRANSITIONS = {
+  court: { label: 'Fondus courts', dur: 0.3, clipDur: { rapide: 1.6, moyen: 2.3, pose: 3.2 }, kb: 0.05 },
+  glisse: { label: 'Glissés', dur: 0.32, clipDur: { rapide: 1.3, moyen: 1.9, pose: 2.7 }, kb: 0.07 },
+  lent: { label: 'Fondus lents', dur: 0.7, clipDur: { rapide: 2.2, moyen: 3.0, pose: 4.0 }, kb: 0.05 },
 };
 const DYN_TRANSITIONS = ['whip', 'zoom', 'push', 'whipR'];
+
+function transId() {
+  return state.trans !== 'auto' && TRANSITIONS[state.trans] ? state.trans : STYLES[state.style].trans;
+}
 
 // Charte graphique de la médiathèque de Servon-sur-Vilaine (Approche Design, novembre 2023).
 const CHARTE = {
@@ -94,6 +107,7 @@ const state = {
   logoData: undefined, // undefined : logo de la médiathèque ; '' : pas de logo ; data URL : autre logo
   music: null,      // { file, name, url, el, buffer }
   style: 'charte',
+  trans: 'auto', // 'auto' : transitions du style choisi
   color: COLORS[0].hex,
   rythme: 'moyen',
   landscape: 'blur',
@@ -110,13 +124,14 @@ function loadSettings() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return;
     const s = JSON.parse(raw);
-    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen', 'filter']) {
+    for (const k of ['endText', 'handle', 'style', 'color', 'rythme', 'landscape', 'keepSound', 'format', 'logoData', 'endScreen', 'filter', 'trans']) {
       if (s[k] !== undefined && s[k] !== null) state[k] = s[k];
     }
     if (!STYLES[state.style]) state.style = 'charte';
     if (!FILTERS.some((f) => f.id === state.filter)) state.filter = 'none';
     if (!FORMATS[state.format]) state.format = 'story';
-    if (!STYLES.dyn.clipDur[state.rythme]) state.rythme = 'moyen';
+    if (!TRANSITIONS.court.clipDur[state.rythme]) state.rythme = 'moyen';
+    if (state.trans !== 'auto' && !TRANSITIONS[state.trans]) state.trans = 'auto';
     if (s.titleDurs && typeof s.titleDurs === 'object') {
       for (const k of Object.keys(TITLE_DUR_DEFAULT)) {
         const v = Number(s.titleDurs[k]);
@@ -128,8 +143,8 @@ function loadSettings() {
 
 function saveSettings() {
   try {
-    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter } = state;
-    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter }));
+    const { endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter, trans } = state;
+    localStorage.setItem(STORE_KEY, JSON.stringify({ endText, handle, style, color, rythme, landscape, keepSound, format, logoData, endScreen, titleDurs, filter, trans }));
   } catch (e) { /* quota dépassé ou stockage bloqué : sans gravité */ }
 }
 
@@ -261,7 +276,7 @@ function roundRect(ctx, x, y, w, h, r) {
    Chronologie du montage
    ========================================================================= */
 
-function clipLength() { return STYLES[state.style].clipDur[state.rythme]; }
+function clipLength() { return TRANSITIONS[transId()].clipDur[state.rythme]; }
 
 const MIN_EXTRACT = 0.5;
 
@@ -309,6 +324,7 @@ function textOf(field, forExport) {
 
 function buildTimeline(forExport = false) {
   const S = STYLES[state.style];
+  const T = TRANSITIONS[transId()];
   const F = FORMATS[state.format];
   const media = state.items.filter((i) => i.ok);
   const title = textOf('title', forExport);
@@ -334,11 +350,11 @@ function buildTimeline(forExport = false) {
     if (i === 0) { s.start = 0; s.transIn = null; return; }
     const prev = segs[i - 1];
     let kind;
-    if (state.style === 'doux' || state.style === 'charte') kind = 'fade';
+    if (transId() !== 'glisse') kind = 'fade';
     else if (prev.type === 'intro') kind = 'uncover';
     else if (s.type === 'outro') kind = 'cover';
     else kind = DYN_TRANSITIONS[s.idx % DYN_TRANSITIONS.length];
-    const td = Math.min(S.trans, prev.dur * 0.45, s.dur * 0.45);
+    const td = Math.min(T.dur, prev.dur * 0.45, s.dur * 0.45);
     s.transIn = { kind, dur: td };
     s.start = prev.start + prev.dur - td;
   });
@@ -347,7 +363,7 @@ function buildTimeline(forExport = false) {
   const outro = segs.find((x) => x.type === 'outro');
   const mediaEnd = outro ? outro.start : last.start + last.dur;
   return {
-    segs, S, F, W: F.W, H: F.H,
+    segs, S, T, F, W: F.W, H: F.H,
     total: last.start + last.dur,
     filter: state.filter,
     // Le titre posé sur les vidéos s’arrête au plus tard quand commence l’écran de fin.
@@ -572,7 +588,7 @@ function drawMediaSeg(ctx, tl, seg, lt, fr) {
   ctx.fillRect(0, 0, W, H);
   if (fr) {
     const isImage = item.kind === 'image';
-    const zoom = 1 + tl.S.kb * (isImage ? 1.8 : 1) * (isImage ? p : easeOutCubic(p));
+    const zoom = 1 + tl.T.kb * (isImage ? 1.8 : 1) * (isImage ? p : easeOutCubic(p));
     if (item.crop) {
       // Cadre choisi à la main, avec le même léger zoom progressif que les autres plans.
       const r = cropRect(item.crop, fr.w, fr.h, W / H);
@@ -2210,7 +2226,7 @@ function loadAacEncoder() {
 function makeRunner(seg, tlx, N) {
   const item = seg.item;
   const { W, H } = tlx;
-  const margin = 1 + tlx.S.kb + 0.03;
+  const margin = 1 + tlx.T.kb + 0.03;
   let need;
   if (item.crop) {
     // Un cadre resserré demande plus de définition : on décode d’autant plus grand.
@@ -2500,6 +2516,14 @@ function syncTitleDur() {
   $('titledur-out').textContent = `${String(v).replace('.', ',')} s`;
 }
 
+// « Selon le style » indique quelles transitions le style donne ; le résumé du menu signale un réglage personnalisé.
+function syncTrans() {
+  $('trans-auto-label').textContent = `Selon le style (${TRANSITIONS[STYLES[state.style].trans].label.toLowerCase()})`;
+  const custom = state.trans !== 'auto';
+  $('advanced-badge').hidden = !custom;
+  if (custom) $('advanced-badge').textContent = `Transitions : ${TRANSITIONS[state.trans].label.toLowerCase()}`;
+}
+
 function setRadio(name, value) {
   const r = document.querySelector(`input[name="${name}"][value="${value}"]`);
   if (r) r.checked = true;
@@ -2555,6 +2579,10 @@ function initForm() {
   setRadio('rythme', state.rythme);
   setRadio('landscape', state.landscape);
   setRadio('format', state.format);
+  setRadio('trans', state.trans);
+  syncTrans();
+  // Le menu s’ouvre tout seul si des réglages avancés ont été changés.
+  $('advanced').open = state.trans !== 'auto';
   buildSwatches();
   buildFilters();
   setRadio('filter', state.filter);
@@ -2582,7 +2610,7 @@ function initForm() {
   $('logo-remove').addEventListener('click', () => { setLogo(''); saveSettings(); rebuild(); });
   $('logo-default').addEventListener('click', () => { setLogo(DEFAULT_LOGO).then(() => { saveSettings(); rebuild(); }); });
 
-  document.querySelectorAll('input[name="style"], input[name="rythme"], input[name="landscape"], input[name="format"]').forEach((r) => {
+  document.querySelectorAll('input[name="style"], input[name="rythme"], input[name="landscape"], input[name="format"], input[name="trans"]').forEach((r) => {
     r.addEventListener('change', () => {
       state[r.name] = r.value;
       saveSettings();
@@ -2590,6 +2618,7 @@ function initForm() {
       renderClipList();
       updateColorGroup();
       syncTitleDur();
+      syncTrans();
     });
   });
 
