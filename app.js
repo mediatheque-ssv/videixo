@@ -856,15 +856,15 @@ function drawIntroDyn(ctx, tl, lt) {
 
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
+  // Le titre est entier dès la première image (c’est elle qu’Instagram montre en vignette),
+  // puis chaque ligne se pose en rétrécissant légèrement.
   fit.lines.forEach((line, i) => {
-    const d = 0.08 + i * 0.1;
-    const q = clamp((lt - d) / 0.42);
-    if (q <= 0) return;
-    const s = 1 + (1 - easeOutBack(q)) * 0.35;
+    const q = clamp((lt - i * 0.06) / 0.45);
+    const s = 1 + (1 - easeOutBack(q)) * 0.12;
     const cx = x0 + fit.widths[i] / 2;
     const cy = top + i * lh + lh * 0.5;
     ctx.save();
-    ctx.globalAlpha = clamp(q * 3) * ghost;
+    ctx.globalAlpha = ghost;
     ctx.translate(cx, cy);
     ctx.scale(s, s);
     ctx.font = fit.font;
@@ -874,15 +874,14 @@ function drawIntroDyn(ctx, tl, lt) {
   });
 
   if (tl.sub) {
-    const d = 0.1 + fit.lines.length * 0.1 + 0.15;
-    const q = clamp((lt - d) / 0.35);
-    if (q > 0) {
+    const q = clamp((lt - 0.1) / 0.45);
+    {
       const e = easeOutCubic(q);
       const subFit = fitText(ctx, tl.sub.text.toUpperCase(), { family: FONT.impact, maxW: W - 2 * x0 - 64, maxLines: 1, max: 54, min: 32 });
       const pw = subFit.widths[0] + 64;
-      const py = top + fit.lines.length * lh + 44 + (1 - e) * 40;
+      const py = top + fit.lines.length * lh + 44 + (1 - e) * 24;
       ctx.save();
-      ctx.globalAlpha = e * (tl.sub.ghost ? 0.5 : 1);
+      ctx.globalAlpha = tl.sub.ghost ? 0.5 : 1;
       ctx.fillStyle = on;
       roundRect(ctx, x0, py, pw, pillH, pillH / 2);
       ctx.fill();
@@ -1026,18 +1025,17 @@ function drawTitleDoux(ctx, tl, t) {
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = 30;
   fit.lines.forEach((l, i) => {
-    const q = clamp((t - 0.15 - i * 0.18) / 0.8);
-    if (q <= 0) return;
-    const e = easeOutCubic(q);
-    ctx.globalAlpha = e * out * ghost;
-    ctx.fillText(l, W / 2, top + (i + 0.85) * lh + (1 - e) * 26);
+    // Visible dès la première image (vignette Instagram), avec une légère montée vers sa place.
+    const e = easeOutCubic(clamp((t - i * 0.1) / 0.9));
+    ctx.globalAlpha = out * ghost;
+    ctx.fillText(l, W / 2, top + (i + 0.85) * lh + (1 - e) * 18);
   });
   ctx.restore();
 
   if (tl.sub) {
-    const q = clamp((t - 0.55 - fit.lines.length * 0.12) / 0.8);
-    if (q > 0) {
-      const e = easeOutCubic(q);
+    const q = clamp((t - 0.1) / 0.9);
+    {
+      const e = 0.35 + 0.65 * easeOutCubic(q);
       const y = top + fit.lines.length * lh + 30;
       ctx.save();
       ctx.globalAlpha = out * (tl.sub.ghost ? 0.5 : 1);
@@ -1052,7 +1050,7 @@ function drawTitleDoux(ctx, tl, t) {
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.globalAlpha = e * out * (tl.sub.ghost ? 0.5 : 1);
+      ctx.globalAlpha = out * (tl.sub.ghost ? 0.5 : 1);
       ctx.fillText(sf.lines[0], W / 2, y + 74);
       ctx.restore();
     }
@@ -1208,11 +1206,10 @@ function drawTitleCharte(ctx, tl, t) {
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = 18;
   fit.lines.forEach((l, i) => {
-    const q = clamp((t - 0.45 - i * 0.14) / 0.7);
-    if (q <= 0) return;
-    const e = easeOutCubic(q);
-    ctx.globalAlpha = e * out * ghost;
-    ctx.fillText(l, inkX(ctx, l, x0) - (1 - e) * 40, firstBase + i * lh);
+    // Visible dès la première image (vignette Instagram), avec un léger glissement vers sa place.
+    const e = easeOutCubic(clamp((t - i * 0.08) / 0.7));
+    ctx.globalAlpha = out * ghost;
+    ctx.fillText(l, inkX(ctx, l, x0) - (1 - e) * 28, firstBase + i * lh);
   });
   ctx.restore();
 
@@ -1234,10 +1231,9 @@ function drawTitleCharte(ctx, tl, t) {
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = 12;
   lines.forEach((l, i) => {
-    const q = clamp((t - 0.95 - i * 0.1) / 0.6);
-    if (q <= 0) return;
-    ctx.globalAlpha = easeOutCubic(q) * out * (tl.sub.ghost ? 0.5 : 1);
-    ctx.fillText(l, dx, dTop + dsize * 0.8 + i * dLH);
+    const e = easeOutCubic(clamp((t - 0.15 - i * 0.08) / 0.6));
+    ctx.globalAlpha = out * (tl.sub.ghost ? 0.5 : 1);
+    ctx.fillText(l, dx + (1 - e) * 16, dTop + dsize * 0.8 + i * dLH);
   });
   ctx.restore();
 }
